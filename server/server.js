@@ -29,6 +29,7 @@ app.use(express.static(path.join(__dirname, "build")))//with this line of miidle
 
 // Put API routes here, before the "catch all" route
 app.use('/api/users', require("./routes/api/user"))
+app.use('/api/astronomy', require("./routes/api/astronomy"))
 
 app.get("/", (req, res) => {
   res.send("API server is running");
