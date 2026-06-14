@@ -8,21 +8,45 @@ const authString = Buffer.from(
 const ASTRONOMY_BASE = "https://api.astronomyapi.com/api/v2";
 const ISS_API_BASE = "https://iss-api.fly.dev";
 const LL2_BASE = "https://lldev.thespacedevs.com/2.3.0";
+const OPENWEATHER_BASE = "https://api.openweathermap.org/data/2.5";
 
 // Cincinnati, OH coordinates for testing
 const CINCINNATI = { lat: 39.1031, lon: -84.512 };
 
 router.get("/bodies", async (req, res) => {
+  const {
+    latitude = CINCINNATI.lat,
+    longitude = CINCINNATI.lon,
+    elevation = 0,
+    from_date,
+    to_date,
+    time = "22:00:00",
+    output = "rows",
+  } = req.query;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const weekOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const params = new URLSearchParams({
+    latitude,
+    longitude,
+    elevation,
+    from_date: from_date || today,
+    to_date: to_date || weekOut,
+    time,
+    output,
+  });
+
   try {
-    const response = await fetch(`${ASTRONOMY_BASE}/bodies/positions`, {
+    const response = await fetch(`${ASTRONOMY_BASE}/bodies/positions?${params}`, {
       headers: {
         Authorization: `Basic ${authString}`,
       },
     });
 
     const data = await response.json();
-console.log(JSON.stringify(data, null, 2));
-res.status(response.status).json(data);
+    console.log(JSON.stringify(data, null, 2));
+    res.status(response.status).json(data);
   } catch (error) {
     console.error("Astronomy API error:", error.message);
     res.status(500).json({ error: error.message });
@@ -199,6 +223,56 @@ router.get("/iss-cincinnati", async (req, res) => {
     });
   } catch (error) {
     console.error("ISS API error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/weather", async (req, res) => {
+  const { lat = CINCINNATI.lat, lon = CINCINNATI.lon, units = "imperial" } = req.query;
+
+  if (!process.env.OpenWeatherMap_API_KEY) {
+    return res.status(500).json({ error: "OpenWeatherMap_API_KEY is not set in environment" });
+  }
+
+  const params = new URLSearchParams({
+    lat,
+    lon,
+    units,
+    appid: process.env.OpenWeatherMap_API_KEY,
+  });
+
+  try {
+    const response = await fetch(`${OPENWEATHER_BASE}/weather?${params}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: data.message || `OpenWeather API returned ${response.status}` });
+    }
+
+    const weather = {
+      location: data.name,
+      coords: { lat: data.coord?.lat, lon: data.coord?.lon },
+      conditions: data.weather?.[0]?.description,
+      temp: data.main?.temp,
+      feels_like: data.main?.feels_like,
+      humidity: data.main?.humidity,
+      pressure: data.main?.pressure,
+      wind_speed: data.wind?.speed,
+      clouds_pct: data.clouds?.all,
+      visibility_m: data.visibility,
+    };
+
+    console.log("\n=== CURRENT WEATHER ===");
+    console.log(`    Location   : ${weather.location}`);
+    console.log(`    Conditions : ${weather.conditions}`);
+    console.log(`    Temp       : ${weather.temp}° (feels like ${weather.feels_like}°)`);
+    console.log(`    Humidity   : ${weather.humidity}%`);
+    console.log(`    Wind       : ${weather.wind_speed}`);
+    console.log(`    Clouds     : ${weather.clouds_pct}%`);
+
+    res.json(weather);
+  } catch (error) {
+    console.error("Weather API error:", error.message);
     res.status(500).json({ error: error.message });
   }
 });
