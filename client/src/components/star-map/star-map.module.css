@@ -1,0 +1,90 @@
+/*
+ * Web-only theme overrides for Leaflet's built-in chrome, restyled to the
+ * StarWindow space palette. Per docs/STYLING.md, hand-written CSS like this is
+ * permitted *only* inside web-specific files (this is imported by
+ * star-map.web.tsx). Leaflet's class names are global, so we target them with
+ * :global() from inside this CSS Module.
+ */
+
+/* Local class applied to the MapContainer element. */
+.mapContainer {
+  height: 100%;
+  width: 100%;
+  border-radius: 20px;
+}
+
+/* Rocket launch-site marker: red square with the rocket art layered on top.
+ * The square is pure CSS so the marker is visible even before icon_rocket.png
+ * exists; the <img> simply sits inside it. */
+.rocketMarker {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  background: #ef233c;
+  border: 1px solid #ff6b7d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rocketMarker img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+/* Map backdrop while tiles load — matches the deep-space background. */
+:global(.leaflet-container) {
+  background: #000008;
+  font-family: var(--font-display);
+}
+
+/* Zoom controls — themed like the app's inputs. */
+:global(.leaflet-bar a) {
+  background: #020810;
+  color: #00d4ff;
+  border-bottom-color: #0d1e30;
+}
+:global(.leaflet-bar a:hover) {
+  background: #0a1a2e;
+  color: #ffffff;
+}
+:global(.leaflet-bar) {
+  border: 1px solid #0d1e30;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Layer toggle (light-pollution overlay) control. */
+:global(.leaflet-control-layers) {
+  background: #01030a;
+  color: #aabbcc;
+  border: 1px solid #0a1828;
+  border-radius: 10px;
+}
+:global(.leaflet-control-layers-toggle) {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Popups — dark card with cyan-tinted edge, mirroring the login card. */
+:global(.leaflet-popup-content-wrapper),
+:global(.leaflet-popup-tip) {
+  background: #01030a;
+  color: #aabbcc;
+  border: 1px solid #0a1828;
+  box-shadow: 0 0 24px rgba(0, 212, 255, 0.15);
+}
+:global(.leaflet-popup-content-wrapper) {
+  border-radius: 10px;
+}
+:global(.leaflet-popup-close-button) {
+  color: #334455;
+}
+
+/* Attribution (required by tile providers) — muted to the tagline color. */
+:global(.leaflet-control-attribution) {
+  background: rgba(1, 3, 10, 0.8);
+  color: #334455;
+}
+:global(.leaflet-control-attribution a) {
+  color: #336688;
+}
