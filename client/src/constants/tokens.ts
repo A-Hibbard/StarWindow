@@ -12,7 +12,8 @@ export const Palette = {
   /** Brand cyan accent / glow */
   accent: '#00d4ff',
   /** Subtle accent used as the new-user button's resting border */
-  accentMuted: '#0a1a2e',
+  // accentMuted: '#0a1a2e',
+  accentMuted: '#0387a2',
   white: '#ffffff',
 
   cardBackground: '#01030a',
@@ -24,11 +25,15 @@ export const Palette = {
   placeholder: '#2a4055',
 
   signInBackground: '#00111f',
-  newUserText: '#336688',
+  
+  // newUserText: '#336688',
+  newUserText: '#0387a2',
 
-  tagline: '#334455',
-  divider: '#080f18',
-  dividerText: '#1a2a3a',
+  tagline: '#677d92',
+  // divider: '#080f18',
+   divider: '#1b314f',
+  // dividerText: '#1a2a3a',
+  dividerText: '#5c7c9d',
 } as const;
 
 export const Radius = {

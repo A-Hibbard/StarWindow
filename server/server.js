@@ -26,6 +26,7 @@ app.use(require('./config/checkToken'))
 
 // Put API routes here, before the "catch all" route
 app.use('/api/users', require("./routes/api/users"))
+app.use('/api/event-types', require("./routes/api/eventTypes"))
 app.use('/api/astronomy', require("./routes/api/astronomy"))
 // app.use('/api/astronomy',ensureLoggedIn, require("./routes/api/astronomy"))
 

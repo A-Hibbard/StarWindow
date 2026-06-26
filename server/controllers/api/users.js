@@ -1,55 +1,55 @@
-const User = require("../../models/user");
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
+const User = require('../../models/user');
+const EventType = require('../../models/eventType');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 module.exports = {
   create,
   login,
   checkToken,
+  updateEventTypes,
 };
-
-
-
 
 async function create(req, res) {
   try {
     const user = await User.create(req.body);
     const token = createJWT(user);
-    console.log(`created user ${user.email}`)
+    console.log(`created user ${user.email}`);
     res.json(token);
   } catch (err) {
     res.status(400).json(err);
   }
 }
 
-
-
 async function login(req, res) {
   try {
-
     const user = await User.findOne({ email: req.body.email });
-    if (!user) return res.status(401).json({ error: "Invalid email" });
+    if (!user) return res.status(401).json({ error: 'Invalid email' });
 
     const match = await bcrypt.compare(req.body.password, user.password);
-    if (!match)   return res.status(401).json({ error: "Invalid email or password" });
+    if (!match) return res.status(401).json({ error: 'Invalid email or password' });
 
-    console.log(`user ${user.email} loggs in`)
+    console.log(`user ${user.email} logs in`);
     res.json(createJWT(user));
   } catch (err) {
     res.status(400).json(err);
   }
 }
 
-
-
-
 function checkToken(req, res) {
-  console.log("req.user", req.user);
+  console.log('req.user', req.user);
   res.json(req.exp);
 }
 
-
-
+async function updateEventTypes(req, res) {
+  try {
+    const eventTypeIds = Array.isArray(req.body.eventTypeIds) ? req.body.eventTypeIds : [];
+    const savedEventTypeIds = await EventType.replaceForUser(req.user.user_id, eventTypeIds);
+    res.json({ eventTypeIds: savedEventTypeIds });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}
 
 function createJWT(user) {
   return jwt.sign(
@@ -63,6 +63,6 @@ function createJWT(user) {
       },
     },
     process.env.SECRET,
-    { expiresIn: "24h" }
+    { expiresIn: '24h' }
   );
 }
