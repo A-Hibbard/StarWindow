@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +10,7 @@ import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchLaunches } from '@/lib/astronomy';
+import * as usersService from '@/utilities/users-service';
 
 // Zoom we drop to once we know the user's location — close enough to see their
 // city while the (upscaled) light-pollution overlay stays readable.
@@ -30,6 +32,13 @@ export default function MapScreen() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locate, setLocate] = useState<LocateState>('locating');
   const [launches, setLaunches] = useState<RocketLaunch[]>([]);
+
+  //check if logged in
+  useEffect(() => {
+    if (!usersService.getToken()) {
+      router.replace('/');
+    }
+  }, []);
 
   // Lazy: only hit the (rate-limited) launches API the first time the user
   // enables the rocket layer.

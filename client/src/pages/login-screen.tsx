@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { router } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Animated,
   Dimensions,
   Image,
@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import { ShootingStar } from '@/components/shooting-star';
 import { Palette, Radius } from '@/constants/tokens';
+import * as usersService from '@/utilities/users-service';
 
 const getScreen = () => Dimensions.get('window');
 
@@ -31,14 +32,25 @@ export default function LoginScreen() {
   const [screen, setScreen] = useState(getScreen());
   const signInGlow = useRef(new Animated.Value(0)).current;
   const newUserGlow = useRef(new Animated.Value(0)).current;
+  
+  
   const soundRef = useRef<Audio.Sound | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const isMutedRef = useRef(false);
+  
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (usersService.getUser()) router.replace('/map');
+  }, []);
 
   useEffect(() => {
     const loadSound = async () => {
       try {
         const { sound } = await Audio.Sound.createAsync(
           require('@/assets/sounds/space.mp3'),
-          { shouldPlay: true, volume: 0.4, isLooping: true }
+          { shouldPlay: true, volume: isMutedRef.current ? 0 : 0.4, isLooping: true, isMuted: isMutedRef.current }
         );
         soundRef.current = sound;
       } catch (e) {
@@ -60,10 +72,26 @@ export default function LoginScreen() {
 
   const isSmall = screen.width < 380;
   const isMedium = screen.width < 768;
-  const logoSize = isSmall ? 80 : isMedium ? 100 : 120;
-  const titleSize = isSmall ? 28 : isMedium ? 36 : 42;
-  const inputPad = isSmall ? 10 : 13;
-  const cardPad = isSmall ? 14 : 20;
+  const isShort = screen.height < 740;
+  const logoSize = isShort ? 64 : isSmall ? 76 : isMedium ? 92 : 104;
+  const titleSize = isShort ? 28 : isSmall ? 30 : isMedium ? 34 : 38;
+  const inputPad = isShort ? 8 : isSmall ? 10 : 12;
+  const cardPad = isShort ? 12 : isSmall ? 14 : 18;
+
+  const handleToggleSound = async () => {
+    const next = !isMutedRef.current;
+    isMutedRef.current = next;
+    setIsMuted(next);
+
+    try {
+      await soundRef.current?.setStatusAsync({
+        isMuted: next,
+        volume: next ? 0 : 0.4,
+      });
+    } catch (e) {
+      console.log('Sound toggle error:', e);
+    }
+  };
 
   const handleSignInPressIn = () => {
     Animated.timing(signInGlow, { toValue: 1, duration: 150, useNativeDriver: false }).start();
@@ -78,6 +106,27 @@ export default function LoginScreen() {
     Animated.timing(newUserGlow, { toValue: 0, duration: 300, useNativeDriver: false }).start();
   };
 
+
+
+  const handleLogin = async () => {
+    if (!email.trim() || !password) {
+      setError('Email and password are required.');
+      return;
+    }
+
+    setError('');
+    setIsSubmitting(true);
+
+    try {
+      await usersService.login({ email: email.trim(), password });
+      router.replace('/map');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Log In Failed - Try Again');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const signInBorderColor = signInGlow.interpolate({
     inputRange: [0, 1],
     outputRange: [Palette.accent, Palette.white],
@@ -89,7 +138,6 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-
       <View style={styles.starField}>
         {STARS.map((star, i) => (
           <View key={i} style={{
@@ -109,37 +157,47 @@ export default function LoginScreen() {
         <ShootingStar key={i} delay={delay} />
       ))}
 
-      <ScrollView contentContainerStyle={styles.inner}>
+      <TouchableOpacity style={styles.soundButton} onPress={handleToggleSound} activeOpacity={0.8}>
+        <SymbolView
+          name={{
+            ios: isMuted ? 'speaker.slash.fill' : 'speaker.wave.2.fill',
+            android: isMuted ? 'volume_off' : 'volume_up',
+            web: isMuted ? 'volume_off' : 'volume_up',
+          }}
+          size={18}
+          tintColor={Palette.accent}
+        />
+      </TouchableOpacity>
 
+      <View style={styles.inner}>
         <View style={styles.centerWrapper}>
-
           <Image
             source={require('@/assets/images/logo_starwindow.png')}
             style={{
               width: logoSize,
               height: logoSize,
-              marginBottom: 10,
+              marginBottom: 8,
             }}
             resizeMode="contain"
           />
 
-          <Text style={[styles.appName, { fontSize: titleSize }]}>
-            StarWindow
-          </Text>
-          <Text style={styles.tagline}>
-            Your personal guide to the night sky
-          </Text>
+          <Text style={[styles.appName, { fontSize: titleSize }]}>StarWindow</Text>
+          <Text style={styles.tagline}>Your personal guide to the night sky</Text>
 
           <View style={[styles.card, { padding: cardPad }]}>
-
+            
             <TextInput
               style={[styles.input, { padding: inputPad }]}
               placeholder="Email"
               placeholderTextColor="#2a4055"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(value) => {
+                setEmail(value);
+                setError('');
+              }}
               keyboardType="email-address"
               autoCapitalize="none"
+              autoCorrect={false}
             />
 
             <TextInput
@@ -147,7 +205,10 @@ export default function LoginScreen() {
               placeholder="Password"
               placeholderTextColor="#2a4055"
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(value) => {
+                setPassword(value);
+                setError('');
+              }}
               secureTextEntry
             />
 
@@ -156,14 +217,24 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              onPress={handleLogin}
               onPressIn={handleSignInPressIn}
               onPressOut={handleSignInPressOut}
               activeOpacity={1}
+              disabled={isSubmitting}
             >
-              <Animated.View style={[styles.signInButton, { borderColor: signInBorderColor }]}>
-                <Text style={styles.signInText}>SIGN IN</Text>
+              <Animated.View
+                style={[
+                  styles.signInButton,
+                  { borderColor: signInBorderColor },
+                  isSubmitting && styles.disabledButton,
+                ]}
+              >
+                <Text style={styles.signInText}>{isSubmitting ? 'SIGNING IN...' : 'SIGN IN'}</Text>
               </Animated.View>
             </TouchableOpacity>
+
+            {!!error && <Text style={styles.errorText}>{error}</Text>}
 
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
@@ -171,36 +242,24 @@ export default function LoginScreen() {
               <View style={styles.dividerLine} />
             </View>
 
-            {/* <TouchableOpacity
-              onPressIn={handleNewUserPressIn}
-              onPressOut={handleNewUserPressOut}
-              activeOpacity={1}
-
-            > */}
             <TouchableOpacity
               onPress={() => router.push('/signup')}
               onPressIn={handleNewUserPressIn}
               onPressOut={handleNewUserPressOut}
               activeOpacity={1}
             >
-
               <Animated.View style={[styles.newUserButton, { borderColor: newUserBorderColor }]}>
                 <Text style={styles.newUserText}>Create New Account</Text>
               </Animated.View>
             </TouchableOpacity>
-
           </View>
 
-          <Text style={styles.footer}>✦   ✦   ✦</Text>
-
+          <Text style={styles.footer}>*   *   *</Text>
         </View>
-
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
-
-
 
 const styles = StyleSheet.create({
   container: {
@@ -213,17 +272,35 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  inner: {
-    flexGrow: 1,
+  soundButton: {
+    position: 'absolute',
+    top: 18,
+    right: 18,
+    zIndex: 10,
+    borderWidth: 1,
+    borderColor: Palette.cardBorder,
+    borderRadius: Radius.sm,
+    backgroundColor: Palette.cardBackground,
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
+  },
+  inner: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
     paddingHorizontal: 20,
+    overflow: 'hidden',
   },
   centerWrapper: {
     width: '100%',
     maxWidth: 420,
+    maxHeight: '100%',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   appName: {
     fontWeight: '900',
@@ -237,7 +314,7 @@ const styles = StyleSheet.create({
   tagline: {
     fontSize: 10,
     color: Palette.tagline,
-    marginBottom: 24,
+    marginBottom: 10,
     letterSpacing: 1.5,
     textAlign: 'center',
   },
@@ -259,11 +336,11 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     color: Palette.inputText,
     fontSize: 13,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   forgotRow: {
     alignSelf: 'flex-end',
-    marginBottom: 14,
+    marginBottom: 10,
   },
   forgot: {
     color: Palette.accent,
@@ -273,20 +350,29 @@ const styles = StyleSheet.create({
   signInButton: {
     backgroundColor: Palette.signInBackground,
     borderRadius: Radius.sm,
-    padding: 12,
+    padding: 10,
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
     borderWidth: 1,
     shadowColor: Palette.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 12,
   },
+  disabledButton: {
+    opacity: 0.55,
+  },
   signInText: {
     color: Palette.accent,
     fontSize: 13,
     fontWeight: 'bold',
     letterSpacing: 4,
+  },
+  errorText: {
+    color: '#ff9a9a',
+    fontSize: 11,
+    marginBottom: 12,
+    textAlign: 'center',
   },
   divider: {
     flexDirection: 'row',
@@ -305,7 +391,7 @@ const styles = StyleSheet.create({
   },
   newUserButton: {
     borderRadius: Radius.sm,
-    padding: 12,
+    padding: 10,
     alignItems: 'center',
     borderWidth: 1,
     backgroundColor: 'transparent',
@@ -318,7 +404,11 @@ const styles = StyleSheet.create({
   footer: {
     color: Palette.divider,
     fontSize: 14,
-    marginTop: 20,
+    marginTop: 10,
     letterSpacing: 8,
   },
 });
+
+
+
+
