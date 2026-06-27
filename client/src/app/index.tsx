@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
+import { useRouter } from 'expo-router';
 
 const getScreen = () => Dimensions.get('window');
 
@@ -107,6 +108,7 @@ function ShootingStar({ delay }: { delay: number }) {
 }
 
 export default function LoginScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [screen, setScreen] = useState(getScreen());
@@ -239,6 +241,7 @@ export default function LoginScreen() {
             <TouchableOpacity
               onPressIn={handleSignInPressIn}
               onPressOut={handleSignInPressOut}
+              onPress={() => router.push('/dashboard')}
               activeOpacity={1}
             >
               <Animated.View style={[styles.signInButton, { borderColor: signInBorderColor }]}>
@@ -393,4 +396,3 @@ const styles = StyleSheet.create({
     letterSpacing: 8,
   },
 });
-
