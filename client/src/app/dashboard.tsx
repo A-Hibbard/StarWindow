@@ -98,7 +98,8 @@ export default function DashboardScreen() {
           </View>
 
           <RailTab label="Calendar" active onPress={() => {}} />
-          <RailTab label="Map" onPress={() => {}} />
+          <RailTab label="Map" onPress={() => router.push("/map")}
+/>
           <RailTab label="Launches" onPress={() => {}} />
           <RailTab label="Profile" onPress={() => {}} />
         </View>
@@ -167,7 +168,7 @@ export default function DashboardScreen() {
               title="Your Sky Tonight"
               meta="Suburban/transition zone · best viewing 30mi NE"
               thumb={<MapThumb />}
-              onPress={() => {}}
+              onPress={() => router.push("/map")}
             />
 
             <PreviewCard
