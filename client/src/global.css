@@ -6,4 +6,31 @@
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
+
+  /* ===== StarWindow color scheme — pulled from login screen ===== */
+
+  /* backgrounds */
+  --color-bg-void: #070809;          /* page background, near-black */
+  --color-bg-deep: #0A0C0E;          /* slightly raised background */
+  --color-surface: #0F1518;          /* cards, panels */
+  --color-surface-raised: #141C20;   /* hover / active surface */
+
+  /* borders */
+  --color-border: #1E3A40;           /* visible borders */
+  --color-border-soft: #16252A;      /* subtle dividers */
+
+  /* text */
+  --color-text-primary: #E8F4F6;     /* main text, headings */
+  --color-text-secondary: #7FA8AE;   /* secondary text, labels */
+  --color-text-tertiary: #3D5358;    /* faint text, placeholders */
+
+  /* accent — the glowing cyan from the logo and Sign In button */
+  --color-accent-moon: #3DD9E8;      /* main glow color — buttons, links, highlights */
+  --color-accent-moon-dim: #1C6B73;  /* darker cyan, for borders/backgrounds */
+  --color-accent-glow: #5EEFFA;      /* brightest cyan, for glow/shadow effects */
+
+  /* supporting accents */
+  --color-accent-blue: #5B9FFF;      /* secondary accent */
+  --color-accent-green: #4ADEC4;     /* success / positive status */
+  --color-accent-red: #FF6B5B;       /* error / countdown / urgent */
 }
