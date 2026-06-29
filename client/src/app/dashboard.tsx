@@ -97,10 +97,9 @@ export default function DashboardScreen() {
             <View style={styles.railMarkCell} />
           </View>
 
-          <RailTab label="Calendar" active onPress={() => {}} />
-          <RailTab label="Map" onPress={() => router.push("/map")}
-/>
-          <RailTab label="Launches" onPress={() => {}} />
+          <RailTab label="Calendar" active onPress={() => router.push('/calendar')} />
+          <RailTab label="Map" onPress={() => router.push('/map')} />
+          <RailTab label="Launches" onPress={() => router.push('/explore')} />
           <RailTab label="Profile" onPress={() => {}} />
         </View>
 
@@ -134,7 +133,8 @@ export default function DashboardScreen() {
               <View style={styles.heroNow}>
                 <View style={styles.pulseDot} />
                 <Text style={styles.heroNowText}>
-                  The moon is currently <Text style={{ fontWeight: '600' }}>above the horizon</Text> — visible now in the SE sky
+                  The moon is currently{' '}
+                  <Text style={{ fontWeight: '600' }}>above the horizon</Text> — visible now in the SE sky
                 </Text>
               </View>
             </View>
@@ -158,7 +158,7 @@ export default function DashboardScreen() {
               title="June 2026"
               meta="Next: Perseid prep notes · Jun 24"
               thumb={<CalendarThumb />}
-              onPress={() => {}}
+              onPress={() => router.push('/calendar')}
             />
 
             <PreviewCard
@@ -168,7 +168,7 @@ export default function DashboardScreen() {
               title="Your Sky Tonight"
               meta="Suburban/transition zone · best viewing 30mi NE"
               thumb={<MapThumb />}
-              onPress={() => router.push("/map")}
+              onPress={() => router.push('/map')}
             />
 
             <PreviewCard
@@ -178,7 +178,7 @@ export default function DashboardScreen() {
               title="Falcon 9 · Starlink 11-4"
               meta="Cape Canaveral SLC-40 · visible from your location"
               thumb={<LaunchThumb />}
-              onPress={() => {}}
+              onPress={() => router.push('/explore')}
             />
           </View>
 
@@ -230,9 +230,22 @@ function SectionLabel({ text }: { text: string }) {
   );
 }
 
-function PreviewCard({ eyebrow, badge, badgeColor, title, meta, thumb, onPress }: {
-  eyebrow: string; badge: string; badgeColor: string; title: string; meta: string;
-  thumb: React.ReactNode; onPress: () => void;
+function PreviewCard({
+  eyebrow,
+  badge,
+  badgeColor,
+  title,
+  meta,
+  thumb,
+  onPress,
+}: {
+  eyebrow: string;
+  badge: string;
+  badgeColor: string;
+  title: string;
+  meta: string;
+  thumb: React.ReactNode;
+  onPress: () => void;
 }) {
   return (
     <Pressable style={styles.previewCard} onPress={onPress}>
