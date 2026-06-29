@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { Palette, Radius } from '@/constants/tokens';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 
@@ -115,7 +116,7 @@ export default function CalendarScreen() {
         {/* ================================================================
             "Frosted Glass" Container for Calendar + Selected Day
             ================================================================ */}
-        <ThemedView style={styles.frostedContainer}>
+        <ThemedView style={styles.calendarContainer}>
           <View style={isVertical ? styles.layoutVertical : styles.layoutHorizontal}>
             {/* ============================================================
                 Calendar Section (Left)
@@ -264,9 +265,6 @@ export default function CalendarScreen() {
                   <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
                     No events detected for this day.
                   </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.shootingStarsPlaceholder}>
-                    [Shooting stars image will appear here]
-                  </ThemedText>
                 </View>
               )}
             </ThemedView>
@@ -290,10 +288,7 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
     paddingTop: 120,
   },
-  //==================================================
-  // Frosted Glass Container
-  //==================================================
-  frostedContainer: {
+  calendarContainer: {
     marginTop: 24,
     paddingTop: 16,
     backgroundColor: 'rgba(11, 18, 38, 0.8)',
@@ -313,7 +308,7 @@ const styles = StyleSheet.create({
   },
   //==================================================
   // Calendar Section (Left)
-  //==================================================  cd cl
+  //================================================== 
   calendarSection: {
     backgroundColor: 'rgb(11, 18, 38)',
     gap: Spacing.three,
@@ -331,7 +326,13 @@ const styles = StyleSheet.create({
     padding: Spacing.two,
   },
   monthTitle: {
-    color: '#FFFFFF',
+         fontWeight: '900',
+      color: Palette.white,
+      letterSpacing: 4,
+      marginBottom: 4,
+      textShadowColor: Palette.accent,
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 14,
   },
   calendarCard: {
     backgroundColor: 'rgb(11, 18, 38)',
@@ -373,18 +374,40 @@ const styles = StyleSheet.create({
     opacity: 1,
   },
   dayCellText: {
-    color: '#B0B4BA',
+         fontWeight: '900',
+      color: Palette.white,
+      letterSpacing: 4,
+      marginBottom: 4,
+      textShadowColor: Palette.accent,
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 14,
   },
   dayHeaderText: {
-    color: '#A7C4FF',
-    fontWeight: '600',
+         fontWeight: '900',
+      color: Palette.white,
+      letterSpacing: 4,
+      marginBottom: 4,
+      textShadowColor: Palette.accent,
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 14,
   },
   dayCellSelectedText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+         fontWeight: '900',
+      color: Palette.white,
+      letterSpacing: 4,
+      marginBottom: 4,
+      textShadowColor: Palette.accent,
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 14,
   },
   dayCellDisabledText: {
-    color: '#6B7280',
+         fontWeight: '900',
+      color: Palette.white,
+      letterSpacing: 4,
+      marginBottom: 4,
+      textShadowColor: Palette.accent,
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 14,
   },
   //==================================================
   // Event Icons in Day Cells
@@ -422,10 +445,22 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   sectionLabel: {
-    color: '#A7C4FF',
+         fontWeight: '900',
+      color: Palette.white,
+      letterSpacing: 4,
+      marginBottom: 4,
+      textShadowColor: Palette.accent,
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 14,
   },
   selectedDateText: {
-    color: '#FFFFFF',
+           fontWeight: '900',
+      color: Palette.white,
+      letterSpacing: 4,
+      marginBottom: 4,
+      textShadowColor: Palette.accent,
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 14,
   },
   eventCount: {
     color: '#B0B4BA',
@@ -477,10 +512,6 @@ const styles = StyleSheet.create({
   },
   noEventsText: {
     color: '#B0B4BA',
-  },
-  shootingStarsPlaceholder: {
-    color: '#6B7280',
-    fontStyle: 'italic',
   },
   //==================================================
   // Filter Buttons Container
