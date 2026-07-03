@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { Palette, Radius } from '@/constants/tokens';
 import { ShootingStar } from '@/components/shooting-star';
+import { MonthGrid } from '@/components/calendar/month-grid';
 
 const STARS = Array.from({ length: 150 }, (_, i) => ({
   top: (i * 23.7) % 100,
@@ -128,20 +129,6 @@ export default function DashboardScreen() {
       ))}
 
       <View style={styles.body}>
-        {/* ---------- LEFT RAIL ---------- */}
-        <View style={styles.rail}>
-          <Image
-            source={require('@/assets/images/logo_starwindow.png')}
-            style={styles.railLogo}
-            resizeMode="contain"
-          />
-
-          <RailTab label="Calendar" active onPress={() => router.push('/calendar')} />
-          <RailTab label="Map" onPress={() => router.push('/map')} />
-          <RailTab label="Launches" onPress={() => router.push('/explore')} />
-          <RailTab label="Profile" onPress={() => {}} />
-        </View>
-
         {/* ---------- MAIN CONTENT ---------- */}
         <ScrollView style={styles.main} contentContainerStyle={styles.mainContent}>
           <View style={styles.topBar}>
@@ -251,17 +238,6 @@ export default function DashboardScreen() {
 
 /* ---------- small subcomponents ---------- */
 
-function RailTab({ label, active, onPress }: { label: string; active?: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.railTab, active && styles.railTabActive]}>
-      {active && <View style={styles.railTabIndicator} />}
-      <Text style={[styles.railTabLabel, active && styles.railTabLabelActive]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <View style={{ marginRight: spacing.lg }}>
@@ -315,21 +291,21 @@ function PreviewCard({
 }
 
 function CalendarThumb() {
-  const events = [2, 8];
-  const today = 10;
+  const today = new Date();
+  const events = [
+    { id: 'dashboard-event-1', date: 8 },
+    { id: 'dashboard-event-2', date: 12 },
+    { id: 'dashboard-event-today', date: today.getDate() },
+  ];
+
   return (
-    <View style={styles.calGrid}>
-      {Array.from({ length: 14 }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.calCell,
-            events.includes(i) && styles.calCellEvent,
-            i === today && styles.calCellToday,
-          ]}
-        />
-      ))}
-    </View>
+    <MonthGrid
+      year={today.getFullYear()}
+      month={today.getMonth()}
+      selectedDate={today}
+      events={events}
+      compact
+    />
   );
 }
 
@@ -359,77 +335,36 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  body: { flex: 1, flexDirection: 'row' },
-
-  rail: {
-    width: 150,
-    backgroundColor: Palette.bgDeep,
-    borderRightWidth: 1,
-    borderRightColor: Palette.borderSoft,
-    alignItems: 'center',
-    paddingVertical: spacing.lg,
-    gap: spacing.sm,
-  },
-  railLogo: {
-    width: 90,
-    height: 90,
-    marginBottom: spacing.lg,
-  },
-  railTab: {
-    width: 130,
-    height: 86,
-    borderRadius: Radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  railTabActive: {
-    backgroundColor: Palette.surfaceRaised,
-  },
-  railTabIndicator: {
-    position: 'absolute',
-    left: -8,
-    top: '50%',
-    marginTop: -14,
-    width: 3,
-    height: 28,
-    backgroundColor: Palette.accentMoon,
-    borderRadius: 3,
-  },
-  railTabLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Palette.textTertiary,
-    textTransform: 'uppercase',
-  },
-  railTabLabelActive: {
-    color: Palette.accentMoon,
-  },
+  body: { flex: 1 },
 
   main: { flex: 1 },
   mainContent: {
     padding: spacing.lg,
     paddingLeft: 20,
     paddingBottom: spacing.xxl,
-    gap: spacing.lg,
+    gap: spacing.md,
     width: '100%',
-    maxWidth: 1200,
+    maxWidth: 1180,
     alignSelf: 'center',
   },
   topBar: {
-    marginBottom: 12,
+    marginBottom: 4,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    gap: spacing.md,
   },
   eyebrow: {
-    fontSize: 25,
+    fontSize: 11,
     color: Palette.accentMoon,
     letterSpacing: 1,
     marginBottom: 6,
+    fontWeight: '600',
   },
   greeting: {
-    fontSize: 42,
-    fontWeight: '900',
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: '700',
     color: Palette.textPrimary,
   },
   locationChip: {
@@ -437,11 +372,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Palette.borderSoft,
     borderRadius: Radius.pill,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
   locationChipText: {
-    fontSize: 14,
+    fontSize: 12,
     color: Palette.textSecondary,
   },
 
@@ -449,36 +384,40 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.surface,
     borderWidth: 1,
     borderColor: Palette.borderSoft,
-    borderRadius: Radius.xl,
+    borderRadius: Radius.lg,
     padding: spacing.lg,
     gap: spacing.lg,
   },
   heroLeft: {},
   heroEyebrow: {
-    fontSize: 15,
+    fontSize: 11,
     color: Palette.textTertiary,
     letterSpacing: 1,
     marginBottom: 8,
+    fontWeight: '600',
   },
   heroTitle: {
-    fontSize: 35,
+    fontSize: 28,
     fontWeight: '600',
     color: Palette.textPrimary,
     marginBottom: spacing.md,
-    lineHeight: 30,
+    lineHeight: 34,
   },
   heroTitleAccent: { color: Palette.accentMoon },
   heroStats: {
     flexDirection: 'row',
     marginBottom: spacing.md,
+    flexWrap: 'wrap',
+    rowGap: spacing.sm,
   },
   statLabel: {
-    fontSize: 15,
+    fontSize: 10,
     color: Palette.textTertiary,
     marginBottom: 4,
+    letterSpacing: 0.5,
   },
   statValue: {
-    fontSize: 15,
+    fontSize: 14,
     color: Palette.textPrimary,
   },
   heroNow: {
@@ -488,7 +427,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Palette.accentMoon + '40',
     borderRadius: Radius.sm,
-    padding: 12,
+    padding: 10,
     gap: 8,
   },
   pulseDot: {
@@ -499,7 +438,8 @@ const styles = StyleSheet.create({
   },
   heroNowText: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 12,
+    lineHeight: 17,
     color: Palette.textPrimary,
   },
   moonStage: {
@@ -548,6 +488,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Palette.textTertiary,
     letterSpacing: 1,
+    fontWeight: '600',
   },
   sectionLabelLine: {
     flex: 1,
@@ -563,32 +504,38 @@ const styles = StyleSheet.create({
   },
   previewCard: {
     backgroundColor: Palette.surface,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: Palette.borderSoft,
-    borderRadius: Radius.lg,
+    borderRadius: Radius.md,
     overflow: 'hidden',
     flexBasis: '31%',
     flexGrow: 1,
-    minWidth: 150,
+    minWidth: 230,
   },
   previewThumb: {
-    height: 105,
+    height: 168,
     backgroundColor: Palette.bgDeep,
-    borderBottomWidth: 2,
+    borderBottomWidth: 1,
     borderBottomColor: Palette.borderSoft,
   },
-  previewBody: { padding: spacing.sm, alignItems: 'center' },
+  previewBody: {
+    padding: spacing.sm,
+    alignItems: 'stretch',
+    gap: 3,
+  },
   previewEyebrowRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    gap: spacing.sm,
+    marginBottom: 3,
   },
   previewEyebrow: {
-    fontSize: 20,
+    flex: 1,
+    fontSize: 10,
     color: Palette.textTertiary,
     letterSpacing: 0.5,
-    textAlign: 'center',
+    fontWeight: '600',
   },
   badge: {
     paddingVertical: 2,
@@ -597,35 +544,19 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 8.5,
+    fontWeight: '700',
   },
   previewTitle: {
-    fontSize: 22,
+    fontSize: 16,
+    lineHeight: 20,
     fontWeight: '600',
     color: Palette.textPrimary,
-    marginBottom: 2,
-    textAlign: 'center',
   },
   previewMeta: {
-    fontSize: 20,
+    fontSize: 12,
+    lineHeight: 17,
     color: Palette.textSecondary,
-    textAlign: 'center',
   },
-
-  calGrid: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 12,
-    gap: 4,
-  },
-  calCell: {
-    width: '12.5%',
-    height: '40%',
-    backgroundColor: Palette.borderSoft,
-    borderRadius: 3,
-  },
-  calCellEvent: { backgroundColor: Palette.accentBlue + '50' },
-  calCellToday: { backgroundColor: Palette.accentMoon },
 
   mapThumb: {
     flex: 1,
@@ -668,22 +599,22 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.surface,
     borderWidth: 1,
     borderColor: Palette.borderSoft,
-    borderRadius: Radius.lg,
+    borderRadius: Radius.md,
     padding: spacing.md,
   },
   profileRing: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 3,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
     borderColor: Palette.accentMoon,
     alignItems: 'center',
     justifyContent: 'center',
   },
   profileAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: Palette.accentBlue,
   },
 });
