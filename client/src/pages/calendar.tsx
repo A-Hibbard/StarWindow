@@ -5,34 +5,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { Palette, Radius } from '@/constants/tokens';
 import { ThemedView } from '@/components/themed-view';
+import { MonthGrid } from '@/components/calendar/month-grid';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 
 const categories = ['Meteor Showers', 'Rocket Launches', 'Alignments', 'More Filters'];
-
-//==================================================
-// To get calendar data for a given month/year
-//==================================================
-function getCalendarRows(year: number, month: number) {
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const startDate = new Date(firstDay);
-  startDate.setDate(startDate.getDate() - firstDay.getDay());
-
-  const rows: (string | number)[][] = [['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']];
-  let week: number[] = [];
-  let current = new Date(startDate);
-
-  while (current <= lastDay || week.length > 0) {
-    week.push(current.getDate());
-    if (week.length === 7) {
-      rows.push([...week]);
-      week = [];
-    }
-    current.setDate(current.getDate() + 1);
-  }
-
-  return rows;
-}
 
 //==========================================================================
 // Mock events data 
@@ -78,10 +54,6 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
-
-  const calendarRows = getCalendarRows(currentYear, currentMonth);
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const monthStart = new Date(currentYear, currentMonth, 1);
 
   //============================
   // Get events for selected date
@@ -152,71 +124,13 @@ export default function CalendarScreen() {
                 </Pressable>
               </View>
 
-              <ThemedView style={styles.calendarCard}>
-                {calendarRows.map((row, rowIndex) => (
-                  <View key={`row-${rowIndex}`} style={styles.calendarRow}>
-                    {row.map((day) => {
-                      const isHeader = typeof day === 'string';
-                      const dayNum = typeof day === 'number' ? day : 0;
-                      const isCurrentMonth = dayNum >= 1 && dayNum <= daysInMonth;
-                      const isSelected =
-                        isCurrentMonth &&
-                        dayNum === selectedDate.getDate() &&
-                        currentMonth === selectedDate.getMonth() &&
-                        currentYear === selectedDate.getFullYear();
-                      const dayEvents = Events.filter((e) => e.date === dayNum);
-
-                      return (
-                        <Pressable
-                          key={`day-${day}-${rowIndex}`}
-                          onPress={() => {
-                            if (isCurrentMonth) {
-                              setSelectedDate(new Date(currentYear, currentMonth, dayNum));
-                            }
-                          }}
-                          disabled={!isCurrentMonth && !isHeader}
-                          style={({ pressed }) => pressed && !isHeader && styles.pressed}>
-                          <ThemedView
-                            style={[
-                              styles.dayCell,
-                              isHeader && styles.dayCellHeader,
-                              isSelected && styles.dayCellSelected,
-                              !isCurrentMonth && !isHeader && styles.dayCellDisabled,
-                            ]}>
-                            <View style={styles.dayNumberContainer}>
-                            <ThemedText
-                              type={isHeader ? 'smallBold' : isSelected ? 'smallBold' : 'small'}
-                              style={
-                                isHeader
-                                  ? styles.dayHeaderText
-                                  : isSelected
-                                    ? styles.dayCellSelectedText
-                                    : !isCurrentMonth
-                                      ? styles.dayCellDisabledText
-                                      : styles.dayCellText
-                              }>
-                              {day}
-                            </ThemedText>
-                          </View>
-                            {/* ====================================
-                                Event icons for this day
-                                ==================================== */}
-                            {dayEvents.length > 0 && !isHeader && (
-                              <View style={styles.eventIconsContainer}>
-                                {dayEvents.slice(0, 3).map((event, idx) => (
-                                  <View key={event.id} style={styles.eventIconBox}>
-                                    <ThemedText style={styles.eventIcon}>{event.icon}</ThemedText>
-                                  </View>
-                                ))}
-                              </View>
-                            )}
-                          </ThemedView>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                ))}
-              </ThemedView>
+              <MonthGrid
+                year={currentYear}
+                month={currentMonth}
+                events={Events}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+              />
             </ThemedView>
 
             {/* ============================================================

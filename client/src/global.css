@@ -7,30 +7,31 @@
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
 
-  /* ===== StarWindow color scheme — pulled from login screen ===== */
+  /* ===== StarWindow color scheme — matches client/src/constants/tokens.ts ===== */
 
   /* backgrounds */
-  --color-bg-void: #070809;          /* page background, near-black */
-  --color-bg-deep: #0A0C0E;          /* slightly raised background */
-  --color-surface: #0F1518;          /* cards, panels */
-  --color-surface-raised: #141C20;   /* hover / active surface */
+  --color-bg-void: #000008;          /* page background, near-black (was Palette.background) */
+  --color-bg-deep: #01030a;          /* slightly raised background (was Palette.cardBackground) */
+  --color-surface: #020810;          /* cards, panels (was Palette.inputBackground) */
+  --color-surface-raised: #00111f;   /* hover / active surface (was Palette.signInBackground) */
 
   /* borders */
-  --color-border: #1E3A40;           /* visible borders */
-  --color-border-soft: #16252A;      /* subtle dividers */
+  --color-border: #0d1e30;           /* visible borders (was Palette.inputBorder) */
+  --color-border-soft: #0a1828;      /* subtle dividers (was Palette.cardBorder) */
 
   /* text */
-  --color-text-primary: #E8F4F6;     /* main text, headings */
-  --color-text-secondary: #7FA8AE;   /* secondary text, labels */
-  --color-text-tertiary: #3D5358;    /* faint text, placeholders */
+  --color-text-primary: #ffffff;     /* main text, headings (was Palette.white) */
+  --color-text-secondary: #aabbcc;   /* secondary text, labels (was Palette.inputText) */
+  --color-text-tertiary: #2a4055;    /* faint text, placeholders (was Palette.placeholder) */
 
   /* accent — the glowing cyan from the logo and Sign In button */
-  --color-accent-moon: #3DD9E8;      /* main glow color — buttons, links, highlights */
-  --color-accent-moon-dim: #1C6B73;  /* darker cyan, for borders/backgrounds */
-  --color-accent-glow: #5EEFFA;      /* brightest cyan, for glow/shadow effects */
+  --color-accent-moon: #00d4ff;      /* main glow color — buttons, links, highlights (was Palette.accent) */
+  --color-accent-moon-dim: #0387a2;  /* darker cyan, for borders/backgrounds (was Palette.accentMuted) */
+  --color-accent-glow: #66e5ff;      /* brightest cyan, for glow/shadow effects */
 
-  /* supporting accents */
+  /* supporting accents — no login equivalent, kept distinct for status badges */
   --color-accent-blue: #5B9FFF;      /* secondary accent */
   --color-accent-green: #4ADEC4;     /* success / positive status */
   --color-accent-red: #FF6B5B;       /* error / countdown / urgent */
 }
+

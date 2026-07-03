@@ -28,6 +28,12 @@ app.use(require('./config/checkToken'))
 app.use('/api/users', require("./routes/api/users"))
 app.use('/api/event-types', require("./routes/api/eventTypes"))
 app.use('/api/astronomy', require("./routes/api/astronomy"))
+app.use('/api/launches', require("./routes/api/launches"))
+app.use('/api/events', require("./routes/api/events"))
+app.use('/api/iss', require("./routes/api/iss"))
+app.use('/api/weather', require("./routes/api/weather"))
+app.use('/api/score', require("./routes/api/score"))
+app.use('/api/news', require("./routes/api/news"))
 // app.use('/api/astronomy',ensureLoggedIn, require("./routes/api/astronomy"))
 
 app.get("/", (req, res) => {

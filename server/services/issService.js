@@ -1,0 +1,117 @@
+// ISS pass service: cache-check -> fetch ISS pass API -> transform -> save -> return.
+//
+// Now backed by the real `iss_passes` table. Raw UTC timestamps are stored; the
+// localized (America/New_York) display strings are derived on read, so a cache
+// hit returns the exact same shape as a fresh fetch. Saving is best-effort.
+
+const issQueries = require("../db/queries/iss");
+const locationQueries = require("../db/queries/locations");
+const { isCacheStale, TTL_MINUTES } = require("../middleware/cache");
+
+const ISS_API_BASE = "https://iss-api.fly.dev";
+const TZ = "America/New_York";
+
+/**
+ * Get upcoming visible ISS passes for a coordinate.
+ * @param {object} opts
+ * @param {number} opts.lat
+ * @param {number} opts.lon
+ * @param {number} [opts.n=5]
+ * @param {number} [opts.daysAhead=5]
+ * @returns {Promise<object>} { observer, tle_epoch, generated_at, passes }
+ */
+async function getIssPasses({ lat, lon, n = 5, daysAhead = 5 }) {
+  const location = await locationQueries.findOrCreateLocation({ lat, long: lon });
+
+  // 1) Cache check — reuse the most recent cached batch if still fresh.
+  const cachedRows = await issQueries.getCachedPasses(location.location_id);
+  if (cachedRows.length > 0 && !isCacheStale(cachedRows[0].cached_at, TTL_MINUTES.ISS)) {
+    console.log("\n=== ISS PASSES (cache hit) ===");
+    return {
+      observer: { lat, lon },
+      tle_epoch: cachedRows[0].tle_epoch,
+      generated_at: cachedRows[0].cached_at,
+      passes: cachedRows.map(rowToDisplay),
+    };
+  }
+
+  // 2) Fetch live.
+  const url = `${ISS_API_BASE}/iss-pass?lat=${lat}&lon=${lon}&n=${n}&days_ahead=${daysAhead}&visible_only=true`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    const err = new Error(`ISS API returned ${response.status}`);
+    err.status = response.status;
+    throw err;
+  }
+  const data = await response.json();
+
+  // 3) Transform into DB rows (raw timestamps) — display is derived from these.
+  const dbRows = (data.passes || []).map((pass) => ({
+    riseTime: pass.rise?.time || null,
+    riseCompass: pass.rise?.compass || null,
+    peakTime: pass.culmination?.time || null,
+    peakCompass: pass.culmination?.compass || null,
+    peakElevationDeg: pass.culmination?.elevation ?? null,
+    setTime: pass.set?.time || null,
+    setCompass: pass.set?.compass || null,
+    durationSec: pass.duration_sec ?? null,
+    visibleDurationSec: pass.visible_duration_sec ?? null,
+    visible: pass.visible ?? null,
+  }));
+
+  console.log("\n=== ISS PASSES ===");
+  console.log(`    Observer  : ${JSON.stringify(data.observer)}`);
+  console.log(`    Passes    : ${dbRows.length}`);
+
+  // 4) Save the batch (best-effort — caching must not break the response).
+  try {
+    await issQueries.savePasses(location.location_id, dbRows, { tleEpoch: data.tle_epoch });
+  } catch (saveErr) {
+    console.error("Failed to cache ISS passes:", saveErr.message);
+  }
+
+  return {
+    observer: data.observer,
+    tle_epoch: data.tle_epoch,
+    generated_at: data.generated_at,
+    passes: dbRows.map(dbRowToDisplay),
+  };
+}
+
+// Localize a timestamp to the display timezone; null-safe.
+function localize(t) {
+  if (!t) return null;
+  return new Date(t).toLocaleString("en-US", { timeZone: TZ });
+}
+
+// From a freshly-built dbRow (camelCase, raw ISO strings).
+function dbRowToDisplay(r) {
+  return {
+    rise: { time: localize(r.riseTime), direction: r.riseCompass },
+    peak: { time: localize(r.peakTime), direction: r.peakCompass, elevation_deg: r.peakElevationDeg },
+    set: { time: localize(r.setTime), direction: r.setCompass },
+    duration_sec: r.durationSec,
+    visible_duration_sec: r.visibleDurationSec,
+    visible: r.visible,
+  };
+}
+
+// From a cached DB row (snake_case, pg timestamps).
+function rowToDisplay(row) {
+  return {
+    rise: { time: localize(row.rise_time), direction: row.rise_compass },
+    peak: { time: localize(row.peak_time), direction: row.peak_compass, elevation_deg: num(row.peak_elevation_deg) },
+    set: { time: localize(row.set_time), direction: row.set_compass },
+    duration_sec: row.duration_sec,
+    visible_duration_sec: row.visible_duration_sec,
+    visible: row.visible,
+  };
+}
+
+function num(v) {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
+}
+
+module.exports = { getIssPasses };
