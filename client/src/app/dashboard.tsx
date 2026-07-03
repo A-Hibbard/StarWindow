@@ -2,7 +2,10 @@
 // StarWindow — Home Dashboard
 // Left rail with 4 tabs (Calendar, Map, Launches, Profile),
 // moon-phase hero, and preview cards for each tab.
-// Colors are written directly in this file (no theme.js needed).
+//
+// UPDATED: now imports Palette/Radius from @/constants/tokens (the same
+// source the login screen uses) instead of a local hardcoded `colors`
+// object, so the two screens share one color scheme.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -12,28 +15,19 @@ import {
   ScrollView,
   Pressable,
   SafeAreaView,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
+import { Palette, Radius } from '@/constants/tokens';
+import { ShootingStar } from '@/components/shooting-star';
 
-// ---------- StarWindow colors ----------
-const colors = {
-  bgVoid: '#070809',
-  bgDeep: '#0A0C0E',
-  surface: '#0F1518',
-  surfaceRaised: '#141C20',
-  border: '#1E3A40',
-  borderSoft: '#16252A',
-  textPrimary: '#E8F4F6',
-  textSecondary: '#7FA8AE',
-  textTertiary: '#3D5358',
-  accentMoon: '#3DD9E8',
-  accentMoonDim: '#1C6B73',
-  accentGlow: '#5EEFFA',
-  accentBlue: '#5B9FFF',
-  accentGreen: '#4ADEC4',
-  accentRed: '#FF6B5B',
-};
+const STARS = Array.from({ length: 150 }, (_, i) => ({
+  top: (i * 23.7) % 100,
+  left: (i * 41.3) % 100,
+  size: (i % 4) + 0.5,
+  opacity: (i % 6) * 0.08 + 0.15,
+}));
 
 const spacing = {
   xs: 4,
@@ -44,17 +38,44 @@ const spacing = {
   xxl: 44,
 };
 
-const radius = {
-  sm: 8,
-  md: 14,
-  lg: 16,
-  xl: 20,
-  pill: 100,
-};
+/** Converts the Moon's age (days since new moon, synodic month ≈ 29.53 days)
+ * into a human-readable phase name. */
+function getMoonPhaseName(age: number): string {
+  if (age < 1.84) return 'New Moon';
+  if (age < 5.53) return 'Waxing Crescent';
+  if (age < 9.22) return 'First Quarter';
+  if (age < 12.91) return 'Waxing Gibbous';
+  if (age < 16.61) return 'Full Moon';
+  if (age < 20.30) return 'Waning Gibbous';
+  if (age < 23.99) return 'Last Quarter';
+  if (age < 27.68) return 'Waning Crescent';
+  return 'New Moon';
+}
 
 export default function DashboardScreen() {
   const router = useRouter();
   const [locationLabel, setLocationLabel] = useState('Locating…');
+  const [moonImageUrl, setMoonImageUrl] = useState<string | null>(null);
+  const [moonPhasePercent, setMoonPhasePercent] = useState<number | null>(null);
+  const [moonPhaseName, setMoonPhaseName] = useState('Loading…');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const now = new Date();
+        const iso = now.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
+        const res = await fetch(`https://svs.gsfc.nasa.gov/api/dialamoon/${iso}`);
+        const data = await res.json();
+
+        setMoonImageUrl(data.image?.url ?? null);
+        setMoonPhasePercent(Math.round(data.phase ?? 0));
+        setMoonPhaseName(getMoonPhaseName(data.age ?? 0));
+      } catch (e) {
+        console.log('Moon fetch error:', e);
+        setMoonPhaseName('Moon data unavailable');
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -87,15 +108,33 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.app}>
+      <View style={styles.starField}>
+        {STARS.map((star, i) => (
+          <View key={i} style={{
+            position: 'absolute',
+            top: `${star.top}%` as any,
+            left: `${star.left}%` as any,
+            width: star.size,
+            height: star.size,
+            borderRadius: star.size,
+            backgroundColor: Palette.white,
+            opacity: star.opacity,
+          }} />
+        ))}
+      </View>
+
+      {[0, 800, 1600, 2400, 3200, 4000].map((delay, i) => (
+        <ShootingStar key={i} delay={delay} />
+      ))}
+
       <View style={styles.body}>
         {/* ---------- LEFT RAIL ---------- */}
         <View style={styles.rail}>
-          <View style={styles.railMark}>
-            <View style={styles.railMarkCell} />
-            <View style={styles.railMarkCell} />
-            <View style={styles.railMarkCell} />
-            <View style={styles.railMarkCell} />
-          </View>
+          <Image
+            source={require('@/assets/images/logo_starwindow.png')}
+            style={styles.railLogo}
+            resizeMode="contain"
+          />
 
           <RailTab label="Calendar" active onPress={() => router.push('/calendar')} />
           <RailTab label="Map" onPress={() => router.push('/map')} />
@@ -120,8 +159,11 @@ export default function DashboardScreen() {
             <View style={styles.heroLeft}>
               <Text style={styles.heroEyebrow}>MOON PHASE · LIVE</Text>
               <Text style={styles.heroTitle}>
-                Waning Gibbous —{'\n'}
-                <Text style={styles.heroTitleAccent}>78% illuminated</Text>
+                {moonPhaseName}
+                {moonPhasePercent !== null ? ' —\n' : ''}
+                {moonPhasePercent !== null && (
+                  <Text style={styles.heroTitleAccent}>{moonPhasePercent}% illuminated</Text>
+                )}
               </Text>
 
               <View style={styles.heroStats}>
@@ -142,7 +184,15 @@ export default function DashboardScreen() {
             <View style={styles.moonStage}>
               <View style={styles.moonOrbitRing} />
               <View style={styles.moonDisc}>
-                <View style={styles.moonShadow} />
+                {moonImageUrl ? (
+                  <Image
+                    source={{ uri: moonImageUrl }}
+                    style={styles.moonImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.moonLoading} />
+                )}
               </View>
             </View>
           </View>
@@ -154,7 +204,7 @@ export default function DashboardScreen() {
             <PreviewCard
               eyebrow="CALENDAR"
               badge="3 EVENTS"
-              badgeColor={colors.accentBlue}
+              badgeColor={Palette.accentBlue}
               title="June 2026"
               meta="Next: Perseid prep notes · Jun 24"
               thumb={<CalendarThumb />}
@@ -164,7 +214,7 @@ export default function DashboardScreen() {
             <PreviewCard
               eyebrow="LIGHT POLLUTION MAP"
               badge="BORTLE 4"
-              badgeColor={colors.accentGreen}
+              badgeColor={Palette.accentGreen}
               title="Your Sky Tonight"
               meta="Suburban/transition zone · best viewing 30mi NE"
               thumb={<MapThumb />}
@@ -174,7 +224,7 @@ export default function DashboardScreen() {
             <PreviewCard
               eyebrow="LAUNCHES"
               badge="T–6H 12M"
-              badgeColor={colors.accentRed}
+              badgeColor={Palette.accentRed}
               title="Falcon 9 · Starlink 11-4"
               meta="Cape Canaveral SLC-40 · visible from your location"
               thumb={<LaunchThumb />}
@@ -303,46 +353,37 @@ function LaunchThumb() {
 /* ---------- styles ---------- */
 
 const styles = StyleSheet.create({
-  app: { flex: 1, backgroundColor: colors.bgVoid },
+  app: { flex: 1, backgroundColor: Palette.bgVoid, overflow: 'hidden' },
+  starField: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
   body: { flex: 1, flexDirection: 'row' },
 
   rail: {
-    width: 76,
-    backgroundColor: colors.bgDeep,
+    width: 150,
+    backgroundColor: Palette.bgDeep,
     borderRightWidth: 1,
-    borderRightColor: colors.borderSoft,
+    borderRightColor: Palette.borderSoft,
     alignItems: 'center',
     paddingVertical: spacing.lg,
     gap: spacing.sm,
   },
-  railMark: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.bgDeep,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 3,
-    gap: 2,
+  railLogo: {
+    width: 90,
+    height: 90,
     marginBottom: spacing.lg,
   },
-  railMarkCell: {
-    width: '46%',
-    height: '46%',
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: 2,
-  },
   railTab: {
-    width: 60,
-    height: 60,
-    borderRadius: radius.md,
+    width: 130,
+    height: 86,
+    borderRadius: Radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   railTabActive: {
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: Palette.surfaceRaised,
   },
   railTabIndicator: {
     position: 'absolute',
@@ -351,96 +392,102 @@ const styles = StyleSheet.create({
     marginTop: -14,
     width: 3,
     height: 28,
-    backgroundColor: colors.accentMoon,
+    backgroundColor: Palette.accentMoon,
     borderRadius: 3,
   },
   railTabLabel: {
-    fontSize: 9,
-    color: colors.textTertiary,
+    fontSize: 15,
+    fontWeight: '700',
+    color: Palette.textTertiary,
     textTransform: 'uppercase',
   },
   railTabLabelActive: {
-    color: colors.accentMoon,
+    color: Palette.accentMoon,
   },
 
   main: { flex: 1 },
   mainContent: {
     padding: spacing.lg,
+    paddingLeft: 20,
     paddingBottom: spacing.xxl,
     gap: spacing.lg,
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
   },
   topBar: {
+    marginBottom: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
   eyebrow: {
-    fontSize: 11,
-    color: colors.accentMoon,
+    fontSize: 25,
+    color: Palette.accentMoon,
     letterSpacing: 1,
     marginBottom: 6,
   },
   greeting: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: colors.textPrimary,
+    fontSize: 42,
+    fontWeight: '900',
+    color: Palette.textPrimary,
   },
   locationChip: {
-    backgroundColor: colors.surface,
+    backgroundColor: Palette.surface,
     borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.pill,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.pill,
     paddingVertical: 8,
     paddingHorizontal: 14,
   },
   locationChipText: {
-    fontSize: 12,
-    color: colors.textSecondary,
+    fontSize: 14,
+    color: Palette.textSecondary,
   },
 
   hero: {
-    backgroundColor: colors.surface,
+    backgroundColor: Palette.surface,
     borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.xl,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.xl,
     padding: spacing.lg,
     gap: spacing.lg,
   },
   heroLeft: {},
   heroEyebrow: {
-    fontSize: 11,
-    color: colors.textTertiary,
+    fontSize: 15,
+    color: Palette.textTertiary,
     letterSpacing: 1,
     marginBottom: 8,
   },
   heroTitle: {
-    fontSize: 24,
+    fontSize: 35,
     fontWeight: '600',
-    color: colors.textPrimary,
+    color: Palette.textPrimary,
     marginBottom: spacing.md,
     lineHeight: 30,
   },
-  heroTitleAccent: { color: colors.accentMoon },
+  heroTitleAccent: { color: Palette.accentMoon },
   heroStats: {
     flexDirection: 'row',
     marginBottom: spacing.md,
   },
   statLabel: {
-    fontSize: 10,
-    color: colors.textTertiary,
+    fontSize: 15,
+    color: Palette.textTertiary,
     marginBottom: 4,
   },
   statValue: {
-    fontSize: 16,
-    color: colors.textPrimary,
+    fontSize: 15,
+    color: Palette.textPrimary,
   },
   heroNow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.accentMoon + '14',
+    backgroundColor: Palette.accentMoon + '14',
     borderWidth: 1,
-    borderColor: colors.accentMoon + '40',
-    borderRadius: radius.sm,
+    borderColor: Palette.accentMoon + '40',
+    borderRadius: Radius.sm,
     padding: 12,
     gap: 8,
   },
@@ -448,12 +495,12 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: colors.accentGreen,
+    backgroundColor: Palette.accentGreen,
   },
   heroNowText: {
     flex: 1,
     fontSize: 13,
-    color: colors.textPrimary,
+    color: Palette.textPrimary,
   },
   moonStage: {
     width: '100%',
@@ -467,7 +514,7 @@ const styles = StyleSheet.create({
     height: 160,
     borderRadius: 80,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: Palette.border,
     borderStyle: 'dashed',
     opacity: 0.5,
   },
@@ -475,21 +522,21 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#D9DEDA',
     overflow: 'hidden',
-    shadowColor: colors.accentMoon,
+    backgroundColor: Palette.bgDeep,
+    shadowColor: Palette.accentMoon,
     shadowOpacity: 0.4,
     shadowRadius: 30,
     elevation: 8,
   },
-  moonShadow: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: '32%',
-    backgroundColor: colors.bgDeep,
-    opacity: 0.92,
+  moonImage: {
+    width: '100%',
+    height: '100%',
+  },
+  moonLoading: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: Palette.surfaceRaised,
   },
 
   sectionLabelRow: {
@@ -498,59 +545,70 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   sectionLabelText: {
-    fontSize: 11,
-    color: colors.textTertiary,
+    fontSize: 12,
+    color: Palette.textTertiary,
     letterSpacing: 1,
   },
   sectionLabelLine: {
     flex: 1,
     height: 1,
-    backgroundColor: colors.borderSoft,
+    backgroundColor: Palette.borderSoft,
   },
 
-  previewGrid: { gap: spacing.md },
+  previewGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+  },
   previewCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.lg,
+    backgroundColor: Palette.surface,
+    borderWidth: 2,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.lg,
     overflow: 'hidden',
+    flexBasis: '31%',
+    flexGrow: 1,
+    minWidth: 150,
   },
   previewThumb: {
-    height: 110,
-    backgroundColor: colors.bgDeep,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSoft,
+    height: 105,
+    backgroundColor: Palette.bgDeep,
+    borderBottomWidth: 2,
+    borderBottomColor: Palette.borderSoft,
   },
-  previewBody: { padding: spacing.md },
+  previewBody: { padding: spacing.sm, alignItems: 'center' },
   previewEyebrowRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   previewEyebrow: {
-    fontSize: 10,
-    color: colors.textTertiary,
+    fontSize: 20,
+    color: Palette.textTertiary,
     letterSpacing: 0.5,
+    textAlign: 'center',
   },
   badge: {
     paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: radius.pill,
+    paddingHorizontal: 7,
+    borderRadius: Radius.pill,
   },
   badgeText: {
-    fontSize: 9.5,
+    fontSize: 8.5,
   },
   previewTitle: {
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 4,
+    color: Palette.textPrimary,
+    marginBottom: 2,
+    textAlign: 'center',
   },
   previewMeta: {
-    fontSize: 12.5,
-    color: colors.textSecondary,
+    fontSize: 20,
+    color: Palette.textSecondary,
+    textAlign: 'center',
   },
 
   calGrid: {
@@ -563,15 +621,15 @@ const styles = StyleSheet.create({
   calCell: {
     width: '12.5%',
     height: '40%',
-    backgroundColor: colors.borderSoft,
+    backgroundColor: Palette.borderSoft,
     borderRadius: 3,
   },
-  calCellEvent: { backgroundColor: colors.accentBlue + '50' },
-  calCellToday: { backgroundColor: colors.accentMoon },
+  calCellEvent: { backgroundColor: Palette.accentBlue + '50' },
+  calCellToday: { backgroundColor: Palette.accentMoon },
 
   mapThumb: {
     flex: 1,
-    backgroundColor: colors.bgDeep,
+    backgroundColor: Palette.bgDeep,
   },
   mapPin: {
     position: 'absolute',
@@ -580,14 +638,14 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.accentMoon,
+    backgroundColor: Palette.accentMoon,
     borderWidth: 1.5,
-    borderColor: colors.bgDeep,
+    borderColor: Palette.bgDeep,
   },
 
   launchThumb: {
     flex: 1,
-    backgroundColor: colors.bgDeep,
+    backgroundColor: Palette.bgDeep,
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingBottom: 20,
@@ -599,7 +657,7 @@ const styles = StyleSheet.create({
     marginLeft: -1.5,
     width: 3,
     height: '60%',
-    backgroundColor: colors.accentMoon,
+    backgroundColor: Palette.accentMoon,
     opacity: 0.5,
   },
   launchRocket: { fontSize: 20 },
@@ -607,10 +665,10 @@ const styles = StyleSheet.create({
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: Palette.surface,
     borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.lg,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.lg,
     padding: spacing.md,
   },
   profileRing: {
@@ -618,7 +676,7 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     borderWidth: 3,
-    borderColor: colors.accentMoon,
+    borderColor: Palette.accentMoon,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -626,6 +684,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.accentBlue,
+    backgroundColor: Palette.accentBlue,
   },
 });
