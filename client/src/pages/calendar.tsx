@@ -6,46 +6,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MonthGrid } from '@/components/calendar/month-grid';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { CalendarEvents } from '@/data/calendar-events';
 
 const categories = ['Meteor Showers', 'Rocket Launches', 'Alignments', 'More Filters'];
-
-//==========================================================================
-// Mock events data 
-//==========================================================================
-const Events = [
-  {
-    id: '1',
-    date: 12,
-    title: 'Perseid Meteor Shower Peak',
-    time: '02:00 AM - 05:00 AM Local',
-    detail: 'Expected ZHR (Zenith Hourly Rate) of up to 100 meteors per hour. Best viewing conditions far from city lights.',
-    icon: '✕',
-  },
-  {
-    id: '2',
-    date: 12,
-    title: 'Falcon 9 - Starlink Group 8-2',
-    time: '21:45 PM Local',
-    detail: 'Launch visible from Eastern seaboard. Trajectory indicates clear visibility post-stage separation.',
-    icon: '✕',
-  },
-  {
-    id: '3',
-    date: 12,
-    title: 'Sturgeon Supermoon',
-    time: 'All Night',
-    detail: 'The Moon will be near its closest approach to the Earth and may look slightly larger than usual.',
-    icon: '✕',
-  },
-  {
-    id: '4',
-    date: 8,
-    title: 'ISS Fly Over',
-    time: '19:30 PM Local',
-    detail: 'International Space Station visible overhead.',
-    icon: '✕',
-  },
-];
 
 export default function CalendarScreen() {
   const { width } = useWindowDimensions();
@@ -57,7 +20,7 @@ export default function CalendarScreen() {
   //============================
   // Get events for selected date
   //============================
-  const selectedDayEvents = Events.filter((e) => e.date === selectedDate.getDate());
+  const selectedDayEvents = CalendarEvents.filter((e) => e.date === selectedDate.getDate());
 
   //========================================================================
   // Determine if layout should be vertical (mobile) or horizontal (desktop)
@@ -126,7 +89,7 @@ export default function CalendarScreen() {
               <MonthGrid
                 year={currentYear}
                 month={currentMonth}
-                events={Events}
+                events={CalendarEvents}
                 selectedDate={selectedDate}
                 onSelectDate={setSelectedDate}
               />
