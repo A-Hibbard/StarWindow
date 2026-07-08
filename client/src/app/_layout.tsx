@@ -1,8 +1,8 @@
-import { DarkTheme, DefaultTheme, ThemeProvider, Stack } from 'expo-router';
-import { useColorScheme } from 'react-native';
+import { DarkTheme, DefaultTheme, ThemeProvider, Stack, usePathname } from 'expo-router';
+import { StyleSheet, View, useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import { AppSidebar } from '@/components/app-sidebar';
 
 // export default function TabLayout() {
 //   const colorScheme = useColorScheme();
@@ -16,11 +16,29 @@ import AppTabs from '@/components/app-tabs';
 
 export default function RootLayout() {
     const colorScheme = useColorScheme();
+    const pathname = usePathname();
+    const showSidebar = pathname !== '/' && pathname !== '/signup';
 
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <AnimatedSplashOverlay />
-        <Stack screenOptions={{ headerShown: false }} />
+        <View style={styles.shell}>
+          {showSidebar && <AppSidebar />}
+          <View style={styles.content}>
+            <Stack screenOptions={{ headerShown: false }} />
+          </View>
+        </View>
       </ThemeProvider>
     );
   }
+
+const styles = StyleSheet.create({
+  shell: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  content: {
+    flex: 1,
+    minWidth: 0,
+  },
+});

@@ -42,7 +42,7 @@ export default function LoginScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (usersService.getUser()) router.replace('/map');
+    if (usersService.getUser()) router.replace('/dashboard');
   }, []);
 
   useEffect(() => {
@@ -73,8 +73,8 @@ export default function LoginScreen() {
   const isSmall = screen.width < 380;
   const isMedium = screen.width < 768;
   const isShort = screen.height < 740;
-  const logoSize = isShort ? 64 : isSmall ? 76 : isMedium ? 92 : 104;
-  const titleSize = isShort ? 28 : isSmall ? 30 : isMedium ? 34 : 38;
+  const logoSize = isShort ? 120 : isSmall ? 120 : isMedium ? 140 : 165;
+  const titleSize = isShort ? 50 : isSmall ? 52 : isMedium ? 52 : 58;
   const inputPad = isShort ? 8 : isSmall ? 10 : 12;
   const cardPad = isShort ? 12 : isSmall ? 14 : 18;
 
@@ -119,7 +119,7 @@ export default function LoginScreen() {
 
     try {
       await usersService.login({ email: email.trim(), password });
-      router.replace('/map');
+      router.replace('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Log In Failed - Try Again');
     } finally {
@@ -312,14 +312,14 @@ const styles = StyleSheet.create({
     textShadowRadius: 14,
   },
   tagline: {
-    fontSize: 10,
+    fontSize: 13,
     color: Palette.tagline,
     marginBottom: 10,
     letterSpacing: 1.5,
     textAlign: 'center',
   },
   card: {
-    width: '100%',
+    width: '120%',
     backgroundColor: Palette.cardBackground,
     borderRadius: Radius.lg,
     borderWidth: 1,

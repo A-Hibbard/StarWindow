@@ -17,7 +17,8 @@ async function create(req, res) {
     console.log(`created user ${user.email}`);
     res.json(token);
   } catch (err) {
-    res.status(400).json(err);
+    console.error('POST /api/users (signup) failed:', err);
+    res.status(400).json({ error: err.message, code: err.code });
   }
 }
 
@@ -32,7 +33,8 @@ async function login(req, res) {
     console.log(`user ${user.email} logs in`);
     res.json(createJWT(user));
   } catch (err) {
-    res.status(400).json(err);
+    console.error('POST /api/users/login failed:', err);
+    res.status(400).json({ error: err.message, code: err.code });
   }
 }
 

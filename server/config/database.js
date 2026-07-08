@@ -9,6 +9,13 @@ const database = new Pool({
     : false,
 });
 
+// Idle clients can be terminated by the server (Supabase drops idle
+// connections). Without this listener, that 'error' event becomes an
+// uncaught exception and crashes the process a few seconds after startup.
+database.on("error", (err) => {
+  console.error("Unexpected error on idle PostgreSQL client:", err.message);
+});
+
 
 
 async function testConnection() {
