@@ -41,8 +41,15 @@ async function getBodyPositions({
   });
 
   // 1) Cache check — reuse if the newest cached batch is still fresh.
-  const cachedRows = await bodyQueries.getCachedBodyPositions(location.location_id);
-  if (cachedRows.length > 0 && !isCacheStale(cachedRows[0].cached_at, TTL_MINUTES.BODY_POSITIONS)) {
+  const cachedRows = await bodyQueries.getCachedBodyPositions(location.location_id, {
+    fromDate,
+    toDate,
+  });
+  if (
+    cachedRows.length > 0 &&
+    !isCacheStale(cachedRows[0].cached_at, TTL_MINUTES.BODY_POSITIONS) &&
+    hasRequestedDateCoverage(cachedRows, fromDate, toDate)
+  ) {
     console.log("\n=== BODY POSITIONS (cache hit) ===");
     return {
       location_id: location.location_id,
@@ -155,6 +162,48 @@ function transformCachedRow(r) {
     magnitude: r.magnitude,
     elongation: r.elongation,
   };
+}
+
+function hasRequestedDateCoverage(rows, fromDate, toDate) {
+  if (!fromDate || !toDate) return true;
+
+  const expectedDates = getDateKeysInRange(fromDate, toDate);
+  if (expectedDates.length === 0) return true;
+
+  const cachedDates = new Set(rows.map((row) => toDateKey(row.observed_date)).filter(Boolean));
+  return expectedDates.every((date) => cachedDates.has(date));
+}
+
+function getDateKeysInRange(fromDate, toDate) {
+  const start = parseDateOnly(fromDate);
+  const end = parseDateOnly(toDate);
+  if (!start || !end || start > end) return [];
+
+  const dates = [];
+  for (let date = start; date <= end; date = addDays(date, 1)) {
+    dates.push(toDateKey(date));
+  }
+  return dates;
+}
+
+function parseDateOnly(value) {
+  if (!value) return null;
+  const [datePart] = String(value).split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function toDateKey(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
 }
 
 // AstronomyAPI returns numbers as strings; coerce, keeping null on failure.

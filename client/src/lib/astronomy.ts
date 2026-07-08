@@ -26,7 +26,7 @@ interface RawLaunch {
  * Entries without usable pad coordinates are dropped.
  */
 export async function fetchLaunches(limit = 20): Promise<RocketLaunch[]> {
-  const res = await fetch(`${API_BASE}/api/astronomy/launches?limit=${limit}`);
+  const res = await fetch(`${API_BASE}/api/launches?limit=${limit}`);
   if (!res.ok) throw new Error(`Launches request failed: ${res.status}`);
 
   const data: { results?: RawLaunch[] } = await res.json();

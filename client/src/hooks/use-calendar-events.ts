@@ -1,37 +1,57 @@
 import { useEffect, useState } from 'react';
 
-import { fetchCalendarEvents, type CalendarEvent } from '@/utilities/events-api';
+import { fetchCalendarEvents, type CalendarEvent, type CalendarEventsQuery } from '@/utilities/events-api';
 
-let cachedEvents: CalendarEvent[] | null = null;
-let pendingRequest: Promise<CalendarEvent[]> | null = null;
+type CalendarEventsInput = number | CalendarEventsQuery;
 
-function loadCalendarEvents(limit?: number) {
-  if (cachedEvents) return Promise.resolve(cachedEvents);
+const cachedEvents = new Map<string, CalendarEvent[]>();
+const pendingRequests = new Map<string, Promise<CalendarEvent[]>>();
 
-  pendingRequest ??= fetchCalendarEvents(limit)
+function getCacheKey(input?: CalendarEventsInput) {
+  return JSON.stringify(typeof input === 'number' ? { limit: input } : input ?? {});
+}
+
+function getInputFromCacheKey(cacheKey: string): CalendarEventsQuery {
+  return JSON.parse(cacheKey) as CalendarEventsQuery;
+}
+
+function loadCalendarEvents(cacheKey: string) {
+  const cached = cachedEvents.get(cacheKey);
+  if (cached) return Promise.resolve(cached);
+
+  let pendingRequest = pendingRequests.get(cacheKey);
+  pendingRequest ??= fetchCalendarEvents(getInputFromCacheKey(cacheKey))
     .then((events) => {
-      cachedEvents = events;
+      cachedEvents.set(cacheKey, events);
       return events;
     })
     .finally(() => {
-      pendingRequest = null;
+      pendingRequests.delete(cacheKey);
     });
+  pendingRequests.set(cacheKey, pendingRequest);
 
   return pendingRequest;
 }
 
-export function useCalendarEvents(limit?: number) {
-  const [events, setEvents] = useState<CalendarEvent[]>(cachedEvents ?? []);
-  const [isLoading, setIsLoading] = useState(!cachedEvents);
+export function useCalendarEvents(input?: CalendarEventsInput) {
+  const cacheKey = getCacheKey(input);
+  const cached = cachedEvents.get(cacheKey);
+  const [events, setEvents] = useState<CalendarEvent[]>(cached ?? []);
+  const [isLoading, setIsLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const currentCached = cachedEvents.get(cacheKey);
 
-    setIsLoading(!cachedEvents);
-    setError(null);
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      if (currentCached) setEvents(currentCached);
+      setIsLoading(!currentCached);
+      setError(null);
+    });
 
-    loadCalendarEvents(limit)
+    loadCalendarEvents(cacheKey)
       .then((loadedEvents) => {
         if (!cancelled) setEvents(loadedEvents);
       })
@@ -47,7 +67,7 @@ export function useCalendarEvents(limit?: number) {
     return () => {
       cancelled = true;
     };
-  }, [limit]);
+  }, [cacheKey]);
 
   return { events, isLoading, error };
 }

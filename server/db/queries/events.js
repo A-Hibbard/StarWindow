@@ -33,13 +33,32 @@ module.exports = {
 
 /**
  * Return cached events joined with their type name, soonest first.
- * @param {number} [limit]
+ * @param {object|number} [opts]
+ * @param {number} [opts.limit]
+ * @param {string} [opts.fromDate] - inclusive YYYY-MM-DD/ISO lower bound
+ * @param {string} [opts.toDate] - inclusive YYYY-MM-DD/ISO upper bound
  */
-async function getCachedEvents(limit) {
+async function getCachedEvents(opts) {
+  const { limit, fromDate, toDate } =
+    typeof opts === "number" ? { limit: opts } : opts || {};
   const values = [];
-  const limitClause = Number.isFinite(limit) && limit > 0 ? "LIMIT $1" : "";
+  const where = [];
 
-  if (limitClause) values.push(limit);
+  if (fromDate) {
+    values.push(fromDate);
+    where.push(`e.start_time >= $${values.length}::timestamptz`);
+  }
+
+  if (toDate) {
+    values.push(toDate);
+    where.push(`e.start_time < ($${values.length}::date + INTERVAL '1 day')`);
+  }
+
+  let limitClause = "";
+  if (Number.isFinite(limit) && limit > 0) {
+    values.push(limit);
+    limitClause = `LIMIT $${values.length}`;
+  }
 
   const result = await database.query(
     `
@@ -49,6 +68,7 @@ async function getCachedEvents(limit) {
         e.video_url, e.image_url
       FROM public.events e
       LEFT JOIN public.event_types et ON et.event_type_id = e.type_id
+      ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
       ORDER BY e.start_time ASC, e.event_id ASC
       ${limitClause}
     `,

@@ -25,10 +25,12 @@ function mapCachedEvent(row) {
  * Get cached space events from Supabase/Postgres.
  * @param {object} opts
  * @param {number} [opts.limit]
+ * @param {string} [opts.fromDate]
+ * @param {string} [opts.toDate]
  * @returns {Promise<object>} { count, results }
  */
-async function getEvents({ limit } = {}) {
-  const events = await eventQueries.getCachedEvents(limit);
+async function getEvents({ limit, fromDate, toDate } = {}) {
+  const events = await eventQueries.getCachedEvents({ limit, fromDate, toDate });
   const results = events.map(mapCachedEvent);
   return { count: results.length, results };
 }
@@ -39,9 +41,18 @@ async function getEvents({ limit } = {}) {
  * NOTE: there is no spacewalk table in the schema, so this is NOT persisted.
  * @param {object} opts
  * @param {number} [opts.limit=5]
+ * @param {string} [opts.fromDate]
+ * @param {string} [opts.toDate]
  */
-async function getSpacewalks({ limit = 5 } = {}) {
-  const response = await fetch(`${LL2_BASE}/spacewalks/?limit=${limit}&ordering=-start`);
+async function getSpacewalks({ limit = 5, fromDate, toDate } = {}) {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    ordering: "-start",
+  });
+  if (fromDate) params.set("start__gte", toStartOfDay(fromDate));
+  if (toDate) params.set("start__lte", toEndOfDay(toDate));
+
+  const response = await fetch(`${LL2_BASE}/spacewalks/?${params}`);
   if (!response.ok) {
     const err = new Error(`LL2 API returned ${response.status}`);
     err.status = response.status;
@@ -68,3 +79,15 @@ async function getSpacewalks({ limit = 5 } = {}) {
 }
 
 module.exports = { getEvents, getSpacewalks };
+
+function toStartOfDay(value) {
+  return isDateOnly(value) ? `${value}T00:00:00Z` : value;
+}
+
+function toEndOfDay(value) {
+  return isDateOnly(value) ? `${value}T23:59:59Z` : value;
+}
+
+function isDateOnly(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+}

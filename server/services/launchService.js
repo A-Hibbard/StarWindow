@@ -15,10 +15,19 @@ const LL2_BASE = "https://lldev.thespacedevs.com/2.3.0";
  * Get upcoming rocket launches.
  * @param {object} opts
  * @param {number} [opts.limit=5]
+ * @param {string} [opts.fromDate]
+ * @param {string} [opts.toDate]
  * @returns {Promise<object>} { count, results }
  */
-async function getLaunches({ limit = 5 } = {}) {
-  const response = await fetch(`${LL2_BASE}/launches/upcoming/?limit=${limit}&mode=detailed`);
+async function getLaunches({ limit = 5, fromDate, toDate } = {}) {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    mode: "detailed",
+  });
+  if (fromDate) params.set("net__gte", toStartOfDay(fromDate));
+  if (toDate) params.set("net__lte", toEndOfDay(toDate));
+
+  const response = await fetch(`${LL2_BASE}/launches/upcoming/?${params}`);
   if (!response.ok) {
     const err = new Error(`LL2 API returned ${response.status}`);
     err.status = response.status;
@@ -116,3 +125,15 @@ async function getLaunches({ limit = 5 } = {}) {
 }
 
 module.exports = { getLaunches };
+
+function toStartOfDay(value) {
+  return isDateOnly(value) ? `${value}T00:00:00Z` : value;
+}
+
+function toEndOfDay(value) {
+  return isDateOnly(value) ? `${value}T23:59:59Z` : value;
+}
+
+function isDateOnly(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+}

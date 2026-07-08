@@ -32,8 +32,25 @@ module.exports = {
  * with body + constellation names. The service uses the newest cached_at to
  * decide staleness.
  * @param {number} locationId
+ * @param {object} [opts]
+ * @param {string} [opts.fromDate]
+ * @param {string} [opts.toDate]
  */
-async function getCachedBodyPositions(locationId) {
+async function getCachedBodyPositions(locationId, opts = {}) {
+  const { fromDate, toDate } = opts;
+  const values = [locationId];
+  const where = ["bp.location_id = $1"];
+
+  if (fromDate) {
+    values.push(fromDate);
+    where.push(`bp.observed_date >= $${values.length}::date`);
+  }
+
+  if (toDate) {
+    values.push(toDate);
+    where.push(`bp.observed_date < ($${values.length}::date + INTERVAL '1 day')`);
+  }
+
   const result = await database.query(
     `
       SELECT
@@ -56,10 +73,10 @@ async function getCachedBodyPositions(locationId) {
       FROM public.body_positions bp
       JOIN public.celestial_bodies cb ON cb.body_id = bp.body_id
       LEFT JOIN public.constellations c ON c.constellation_id = bp.constellation_id
-      WHERE bp.location_id = $1
+      WHERE ${where.join(" AND ")}
       ORDER BY bp.cached_at DESC, bp.observed_date ASC
     `,
-    [locationId]
+    values
   );
   return result.rows;
 }
