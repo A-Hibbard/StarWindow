@@ -4,9 +4,10 @@ const eventService = require("../../services/eventService");
 
 // GET /api/events?limit=
 router.get("/", async (req, res) => {
-  const { limit = 5 } = req.query;
+  const { limit } = req.query;
   try {
-    const result = await eventService.getEvents({ limit: Number(limit) });
+    const parsedLimit = limit == null ? undefined : Number(limit);
+    const result = await eventService.getEvents({ limit: parsedLimit });
     res.json(result);
   } catch (error) {
     const status = error.status || 500;

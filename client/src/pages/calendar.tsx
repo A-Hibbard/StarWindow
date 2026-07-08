@@ -6,7 +6,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MonthGrid } from '@/components/calendar/month-grid';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { CalendarEvents } from '@/data/calendar-events';
+import { useCalendarEvents } from '@/hooks/use-calendar-events';
+import { getCalendarEventsForDate, getCalendarEventsForMonth } from '@/utilities/events-api';
 
 const categories = ['Meteor Showers', 'Rocket Launches', 'Alignments', 'More Filters'];
 
@@ -16,11 +17,13 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const { events, isLoading, error } = useCalendarEvents();
 
   //============================
   // Get events for selected date
   //============================
-  const selectedDayEvents = CalendarEvents.filter((e) => e.date === selectedDate.getDate());
+  const selectedDayEvents = getCalendarEventsForDate(events, selectedDate);
+  const currentMonthEvents = getCalendarEventsForMonth(events, currentYear, currentMonth);
 
   //========================================================================
   // Determine if layout should be vertical (mobile) or horizontal (desktop)
@@ -89,7 +92,7 @@ export default function CalendarScreen() {
               <MonthGrid
                 year={currentYear}
                 month={currentMonth}
-                events={CalendarEvents}
+                events={currentMonthEvents}
                 selectedDate={selectedDate}
                 onSelectDate={setSelectedDate}
               />
@@ -106,7 +109,22 @@ export default function CalendarScreen() {
                 {selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
               </ThemedText>
 
-              {selectedDayEvents.length > 0 ? (
+              {isLoading ? (
+                <View style={styles.noEventsContainer}>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
+                    Loading calendar events...
+                  </ThemedText>
+                </View>
+              ) : error ? (
+                <View style={styles.noEventsContainer}>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
+                    Could not load calendar events.
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.shootingStarsPlaceholder}>
+                    {error}
+                  </ThemedText>
+                </View>
+              ) : selectedDayEvents.length > 0 ? (
                 <>
                   <ThemedText type="small" themeColor="textSecondary" style={styles.eventCount}>
                     {selectedDayEvents.length} celestial event{selectedDayEvents.length !== 1 ? 's' : ''} detected.

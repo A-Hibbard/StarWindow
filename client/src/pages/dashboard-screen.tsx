@@ -22,7 +22,12 @@ import * as Location from 'expo-location';
 import { Palette, Radius } from '@/constants/tokens';
 import { ShootingStar } from '@/components/shooting-star';
 import { MonthGrid } from '@/components/calendar/month-grid';
-import { CalendarEvents } from '@/data/calendar-events';
+import { useCalendarEvents } from '@/hooks/use-calendar-events';
+import {
+  getCalendarEventsForMonth,
+  getNextCalendarEvent,
+  type CalendarEvent,
+} from '@/utilities/events-api';
 
 const STARS = Array.from({ length: 150 }, (_, i) => ({
   top: (i * 23.7) % 100,
@@ -54,22 +59,25 @@ function getMoonPhaseName(age: number): string {
   return 'New Moon';
 }
 
-function getNextCalendarEvent(today: Date) {
-  return CalendarEvents.find((event) => event.date >= today.getDate()) ?? CalendarEvents[0];
-}
-
 export default function DashboardScreen() {
   const router = useRouter();
   const today = new Date();
+  const { events, isLoading: isCalendarLoading, error: calendarError } = useCalendarEvents();
+  const currentMonthEvents = getCalendarEventsForMonth(events, today.getFullYear(), today.getMonth());
   const calendarTitle = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const nextCalendarEvent = getNextCalendarEvent(today);
+  const nextCalendarEvent = getNextCalendarEvent(events, today);
   const nextCalendarDate = nextCalendarEvent
-    ? new Date(today.getFullYear(), today.getMonth(), nextCalendarEvent.date).toLocaleDateString('en-US', {
+    ? new Date(nextCalendarEvent.startDate).toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
       })
     : null;
-  const calendarMeta = nextCalendarEvent
+  const calendarBadge = isCalendarLoading ? 'LOADING' : calendarError ? 'UNAVAILABLE' : `${currentMonthEvents.length} EVENTS`;
+  const calendarMeta = isCalendarLoading
+    ? 'Loading upcoming events...'
+    : calendarError
+    ? 'Could not load event data'
+    : nextCalendarEvent
     ? `Next: ${nextCalendarEvent.title} - ${nextCalendarDate}`
     : 'No calendar events scheduled';
   const [locationLabel, setLocationLabel] = useState('Locating…');
@@ -207,11 +215,11 @@ export default function DashboardScreen() {
           <View style={styles.previewGrid}>
             <PreviewCard
               eyebrow="CALENDAR"
-              badge={`${CalendarEvents.length} EVENTS`}
+              badge={calendarBadge}
               badgeColor={Palette.accentBlue}
               title={calendarTitle}
               meta={calendarMeta}
-              thumb={<CalendarThumb />}
+              thumb={<CalendarThumb events={currentMonthEvents} />}
               onPress={() => router.push('/calendar')}
             />
 
@@ -307,7 +315,7 @@ function PreviewCard({
   );
 }
 
-function CalendarThumb() {
+function CalendarThumb({ events }: { events: CalendarEvent[] }) {
   const today = new Date();
 
   return (
@@ -315,7 +323,7 @@ function CalendarThumb() {
       year={today.getFullYear()}
       month={today.getMonth()}
       selectedDate={today}
-      events={CalendarEvents}
+      events={events}
       compact
     />
   );

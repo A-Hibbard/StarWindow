@@ -33,9 +33,14 @@ module.exports = {
 
 /**
  * Return cached events joined with their type name, soonest first.
- * @param {number} [limit=20]
+ * @param {number} [limit]
  */
-async function getCachedEvents(limit = 20) {
+async function getCachedEvents(limit) {
+  const values = [];
+  const limitClause = Number.isFinite(limit) && limit > 0 ? "LIMIT $1" : "";
+
+  if (limitClause) values.push(limit);
+
   const result = await database.query(
     `
       SELECT
@@ -44,10 +49,10 @@ async function getCachedEvents(limit = 20) {
         e.video_url, e.image_url
       FROM public.events e
       LEFT JOIN public.event_types et ON et.event_type_id = e.type_id
-      ORDER BY e.start_time ASC
-      LIMIT $1
+      ORDER BY e.start_time ASC, e.event_id ASC
+      ${limitClause}
     `,
-    [limit]
+    values
   );
   return result.rows;
 }
