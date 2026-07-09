@@ -14,6 +14,10 @@ const authString = Buffer.from(
 ).toString("base64");
 
 const ASTRONOMY_BASE = "https://api.astronomyapi.com/api/v2";
+const NASA_SVS_BASE = "https://svs.gsfc.nasa.gov/api/dialamoon";
+const NASA_REQUEST_TIMEOUT_MS = 8000;
+const SYNODIC_MONTH_DAYS = 29.530588853;
+const KNOWN_NEW_MOON_UTC = Date.UTC(2000, 0, 6, 18, 14);
 
 /**
  * Get celestial body positions for a coordinate + date window.
@@ -116,6 +120,95 @@ async function getBodyPositions({
   return { location_id: location.location_id, count: visible.length, results: visible };
 }
 
+/**
+ * Get moon phase for a coordinate/date. The phase itself is effectively global,
+ * but it is cached by location because the existing schema keys moon_phases by
+ * location_id + phase_date.
+ * @param {object} opts
+ * @param {number} opts.latitude
+ * @param {number} opts.longitude
+ * @param {string} [opts.date] - YYYY-MM-DD or ISO datetime. Defaults to now.
+ */
+async function getMoonPhase({ latitude, longitude, date } = {}) {
+  const when = date ? new Date(date) : new Date();
+  if (Number.isNaN(when.getTime())) {
+    const err = new Error("Invalid date");
+    err.status = 400;
+    throw err;
+  }
+
+  const location = await locationQueries.findOrCreateLocation({
+    lat: Number(latitude),
+    long: Number(longitude),
+  });
+  const phaseDate = toDateKey(when);
+
+  const cached = await bodyQueries.getCachedMoonPhase(location.location_id, phaseDate);
+  if (cached && !isCacheStale(cached.cached_at, TTL_MINUTES.MOON_PHASES)) {
+    console.log("\n=== MOON PHASE (cache hit) ===");
+    return transformMoonPhaseRow(cached);
+  }
+
+  const data = await fetchMoonPhaseFromNasa(when).catch((error) => {
+    console.warn("NASA moon phase fetch failed; using approximate phase:", error.message);
+    return getApproxMoonPhase(when);
+  });
+
+  const phasePercent = toNum(data.phase);
+  const age = toNum(data.age);
+  const saved = await bodyQueries.saveMoonPhase({
+    locationId: location.location_id,
+    phaseDate,
+    phaseString: getMoonPhaseName(age),
+    phaseFraction: phasePercent == null ? null : phasePercent / 100,
+    phaseAngle: toNum(data.angle),
+  });
+
+  return {
+    ...transformMoonPhaseRow(saved),
+    age_days: age,
+    image_url: data.image?.url || null,
+  };
+}
+
+async function fetchMoonPhaseFromNasa(when) {
+  const isoMinute = when.toISOString().slice(0, 16);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), NASA_REQUEST_TIMEOUT_MS);
+
+  let response;
+  let data;
+  try {
+    response = await fetch(`${NASA_SVS_BASE}/${isoMinute}`, {
+      signal: controller.signal,
+    });
+    data = await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    const err = new Error(data?.detail || `NASA SVS returned ${response.status}`);
+    err.status = response.status;
+    throw err;
+  }
+
+  return data;
+}
+
+function getApproxMoonPhase(when) {
+  const daysSinceKnownNewMoon = (when.getTime() - KNOWN_NEW_MOON_UTC) / 86400000;
+  const age = modulo(daysSinceKnownNewMoon, SYNODIC_MONTH_DAYS);
+  const phase = ((1 - Math.cos((2 * Math.PI * age) / SYNODIC_MONTH_DAYS)) / 2) * 100;
+
+  return {
+    age,
+    phase,
+    angle: (age / SYNODIC_MONTH_DAYS) * 360,
+    image: null,
+  };
+}
+
 // Flatten AstronomyAPI rows -> the normalized shape saveBodyPositions() expects.
 function transformBodiesResponse(data, locationId) {
   const rows = data?.data?.table?.rows || [];
@@ -162,6 +255,34 @@ function transformCachedRow(r) {
     magnitude: r.magnitude,
     elongation: r.elongation,
   };
+}
+
+function transformMoonPhaseRow(row) {
+  const phaseFraction = toNum(row.phase_fraction);
+  return {
+    moon_phase_id: row.moon_phase_id,
+    location_id: row.location_id,
+    phase_date: toDateKey(row.phase_date),
+    phase_string: row.phase_string,
+    phase_fraction: phaseFraction,
+    phase_percent: phaseFraction == null ? null : Math.round(phaseFraction * 100),
+    phase_angle: toNum(row.phase_angle),
+    cached_at: row.cached_at,
+    image_url: null,
+  };
+}
+
+function getMoonPhaseName(age) {
+  if (age == null) return "Moon Phase";
+  if (age < 1.84) return "New Moon";
+  if (age < 5.53) return "Waxing Crescent";
+  if (age < 9.22) return "First Quarter";
+  if (age < 12.91) return "Waxing Gibbous";
+  if (age < 16.61) return "Full Moon";
+  if (age < 20.3) return "Waning Gibbous";
+  if (age < 23.99) return "Last Quarter";
+  if (age < 27.68) return "Waning Crescent";
+  return "New Moon";
 }
 
 function hasRequestedDateCoverage(rows, fromDate, toDate) {
@@ -213,9 +334,8 @@ function toNum(v) {
   return Number.isNaN(n) ? null : n;
 }
 
-// TODO (FEATURE GAP): moon phases. The schema has moon_phases and db/queries/bodies.js
-// exposes getCachedMoonPhase/saveMoonPhase, but the original route never fetched
-// them. AstronomyAPI serves moon phase from POST /studio/moon-phase (a separate
-// endpoint). Add a getMoonPhase() here when you want to populate that table.
+function modulo(value, divisor) {
+  return ((value % divisor) + divisor) % divisor;
+}
 
-module.exports = { getBodyPositions };
+module.exports = { getBodyPositions, getMoonPhase };

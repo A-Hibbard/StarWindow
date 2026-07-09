@@ -32,4 +32,25 @@ router.get("/bodies", async (req, res) => {
   }
 });
 
+// GET /api/astronomy/moon-phase?latitude=&longitude=&date=
+router.get("/moon-phase", async (req, res) => {
+  const {
+    latitude = CINCINNATI.lat,
+    longitude = CINCINNATI.lon,
+    date,
+  } = req.query;
+
+  try {
+    const result = await astronomyService.getMoonPhase({
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+      date,
+    });
+    res.json(result);
+  } catch (error) {
+    const status = error.status || 500;
+    res.status(status).json({ error: error.message, status });
+  }
+});
+
 module.exports = router;

@@ -28,6 +28,7 @@ import {
   getNextCalendarEvent,
   type CalendarEvent,
 } from '@/utilities/events-api';
+import { fetchMoonPhase } from '@/utilities/moon-api';
 
 const STARS = Array.from({ length: 150 }, (_, i) => ({
   top: (i * 23.7) % 100,
@@ -45,18 +46,22 @@ const spacing = {
   xxl: 44,
 };
 
-/** Converts the Moon's age (days since new moon, synodic month ≈ 29.53 days)
- * into a human-readable phase name. */
-function getMoonPhaseName(age: number): string {
-  if (age < 1.84) return 'New Moon';
-  if (age < 5.53) return 'Waxing Crescent';
-  if (age < 9.22) return 'First Quarter';
-  if (age < 12.91) return 'Waxing Gibbous';
-  if (age < 16.61) return 'Full Moon';
-  if (age < 20.30) return 'Waning Gibbous';
-  if (age < 23.99) return 'Last Quarter';
-  if (age < 27.68) return 'Waning Crescent';
-  return 'New Moon';
+const DEFAULT_COORDS = { latitude: 39.1031, longitude: -84.512 };
+const DEFAULT_LOCATION_LABEL = 'Default: Cincinnati, OH';
+
+function formatMoonPercent(value: number | null) {
+  return value === null ? '--' : `${Math.round(value)}%`;
+}
+
+function formatMoonAngle(value: number | null) {
+  return value === null ? '--' : `${Math.round(value)} deg`;
+}
+
+function formatMoonDate(value: string | null) {
+  if (!value) return 'Today';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return 'Today';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 export default function DashboardScreen() {
@@ -80,44 +85,64 @@ export default function DashboardScreen() {
     : nextCalendarEvent
     ? `Next: ${nextCalendarEvent.title} - ${nextCalendarDate}`
     : 'No calendar events scheduled';
-  const [locationLabel, setLocationLabel] = useState('Locating…');
+  const [locationLabel, setLocationLabel] = useState('Locating...');
   const [moonImageUrl, setMoonImageUrl] = useState<string | null>(null);
   const [moonPhasePercent, setMoonPhasePercent] = useState<number | null>(null);
-  const [moonPhaseName, setMoonPhaseName] = useState('Loading…');
+  const [moonPhaseAngle, setMoonPhaseAngle] = useState<number | null>(null);
+  const [moonPhaseDate, setMoonPhaseDate] = useState<string | null>(null);
+  const [moonPhaseName, setMoonPhaseName] = useState('Loading...');
 
   useEffect(() => {
+    let isMounted = true;
+    let hasMoonData = false;
+
+    async function loadMoonPhase(
+      coords = DEFAULT_COORDS,
+      options: { showError?: boolean } = {}
+    ) {
+      const { showError = true } = options;
+      try {
+        const moon = await fetchMoonPhase(coords);
+        if (!isMounted) return;
+        hasMoonData = true;
+        setMoonImageUrl(moon.image_url ?? null);
+        setMoonPhasePercent(moon.phase_percent ?? null);
+        setMoonPhaseAngle(moon.phase_angle ?? null);
+        setMoonPhaseDate(moon.phase_date ?? null);
+        setMoonPhaseName(moon.phase_string ?? 'Moon phase unavailable');
+      } catch (error) {
+        console.log('Moon fetch error:', error);
+        if (isMounted && showError && !hasMoonData) {
+          setMoonPhaseName('Moon data unavailable');
+        }
+      }
+    }
+
+    void loadMoonPhase(DEFAULT_COORDS);
+
     (async () => {
       try {
-        const now = new Date();
-        const iso = now.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
-        const res = await fetch(`https://svs.gsfc.nasa.gov/api/dialamoon/${iso}`);
-        const data = await res.json();
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (!isMounted) return;
+        if (status !== 'granted') {
+          setLocationLabel(DEFAULT_LOCATION_LABEL);
+          return;
+        }
 
-        setMoonImageUrl(data.image?.url ?? null);
-        setMoonPhasePercent(Math.round(data.phase ?? 0));
-        setMoonPhaseName(getMoonPhaseName(data.age ?? 0));
-      } catch (e) {
-        console.log('Moon fetch error:', e);
-        setMoonPhaseName('Moon data unavailable');
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLocationLabel('Location off');
-        return;
-      }
-
-      try {
         const position = await Location.getCurrentPositionAsync({});
-        const places = await Location.reverseGeocodeAsync({
+        if (!isMounted) return;
+        const coords = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
+        };
+        void loadMoonPhase(coords, { showError: false });
+
+        const places = await Location.reverseGeocodeAsync({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
         });
 
+        if (!isMounted) return;
         if (places.length > 0) {
           const place = places[0];
           const city = place.city ?? place.subregion ?? 'Unknown';
@@ -127,9 +152,13 @@ export default function DashboardScreen() {
           setLocationLabel('Unknown location');
         }
       } catch (err) {
-        setLocationLabel('Location unavailable');
+        if (isMounted) setLocationLabel(DEFAULT_LOCATION_LABEL);
       }
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   return (
@@ -172,23 +201,23 @@ export default function DashboardScreen() {
               <Text style={styles.heroEyebrow}>MOON PHASE · LIVE</Text>
               <Text style={styles.heroTitle}>
                 {moonPhaseName}
-                {moonPhasePercent !== null ? ' —\n' : ''}
+                {moonPhasePercent !== null ? ' -\n' : ''}
                 {moonPhasePercent !== null && (
                   <Text style={styles.heroTitleAccent}>{moonPhasePercent}% illuminated</Text>
                 )}
               </Text>
 
               <View style={styles.heroStats}>
-                <Stat label="MOONRISE" value="9:42 PM" />
-                <Stat label="MOONSET" value="11:18 AM" />
-                <Stat label="ALTITUDE" value="34°" />
+                <Stat label="ILLUMINATION" value={formatMoonPercent(moonPhasePercent)} />
+                <Stat label="PHASE ANGLE" value={formatMoonAngle(moonPhaseAngle)} />
+                <Stat label="PHASE DATE" value={formatMoonDate(moonPhaseDate)} />
               </View>
 
               <View style={styles.heroNow}>
                 <View style={styles.pulseDot} />
                 <Text style={styles.heroNowText}>
-                  The moon is currently{' '}
-                  <Text style={{ fontWeight: '600' }}>above the horizon</Text> — visible now in the SE sky
+                  Moon phase data is loaded from the backend for{' '}
+                  <Text style={{ fontWeight: '600' }}>{locationLabel}</Text>.
                 </Text>
               </View>
             </View>

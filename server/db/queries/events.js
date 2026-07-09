@@ -25,6 +25,7 @@ const database = require("../../config/database");
 module.exports = {
   getCachedEvents,
   saveEvent,
+  findEventByNaturalKey,
   upsertEventType,
   insertEvent,
   linkEventToLocation,
@@ -99,6 +100,27 @@ async function saveEvent(data) {
     await client.query("BEGIN");
 
     const typeId = data.eventType ? await upsertEventType(data.eventType, client) : null;
+    const existing = await findEventByNaturalKey(
+      {
+        name: data.name,
+        startTime: data.startTime,
+        typeId,
+      },
+      client
+    );
+
+    if (existing) {
+      if (data.locationId) {
+        await linkEventToLocation(existing.event_id, data.locationId, client);
+      }
+      for (const bodyId of data.bodyIds || []) {
+        await linkEventToBody(existing.event_id, bodyId, client);
+      }
+
+      await client.query("COMMIT");
+      return existing;
+    }
+
     const event = await insertEvent({ ...data, typeId }, client);
 
     if (data.locationId) {
@@ -116,6 +138,25 @@ async function saveEvent(data) {
   } finally {
     client.release();
   }
+}
+
+async function findEventByNaturalKey({ name, startTime, typeId }, client) {
+  const db = client || database;
+  if (!name || !startTime) return null;
+
+  const result = await db.query(
+    `
+      SELECT event_id, name, start_time, end_time, date_precision, description,
+             type_id, webcast_live, video_url, image_url
+      FROM public.events
+      WHERE lower(name) = lower($1)
+        AND start_time = $2::timestamptz
+        AND type_id IS NOT DISTINCT FROM $3
+      LIMIT 1
+    `,
+    [name, startTime, typeId || null]
+  );
+  return result.rows[0] || null;
 }
 
 /** Resolve (or create) an event_types row by name; returns event_type_id. */

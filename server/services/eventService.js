@@ -1,10 +1,12 @@
-// Event service: read cached event rows from Supabase/Postgres and return
-// frontend-friendly data. The free tier should not refetch live LL2 data on
-// every calendar/dashboard request.
+// Event service: fill the event cache from SpaceDevs LL2 when a caller requests
+// a date window, then return frontend-friendly rows from Supabase/Postgres.
 
 const eventQueries = require("../db/queries/events");
+const locationQueries = require("../db/queries/locations");
 
 const LL2_BASE = "https://lldev.thespacedevs.com/2.3.0";
+const DEFAULT_EVENT_TYPE = "Space Event";
+const EVENTS_PAGE_SIZE = 100;
 
 function mapCachedEvent(row) {
   return {
@@ -30,9 +32,85 @@ function mapCachedEvent(row) {
  * @returns {Promise<object>} { count, results }
  */
 async function getEvents({ limit, fromDate, toDate } = {}) {
+  if (fromDate && toDate) {
+    await cacheExternalEvents({ fromDate, toDate });
+  }
+
   const events = await eventQueries.getCachedEvents({ limit, fromDate, toDate });
   const results = events.map(mapCachedEvent);
   return { count: results.length, results };
+}
+
+async function cacheExternalEvents({ fromDate, toDate }) {
+  const events = await fetchExternalEvents({ fromDate, toDate });
+  let saved = 0;
+
+  for (const event of events) {
+    try {
+      const normalized = await normalizeExternalEvent(event);
+      if (!normalized) continue;
+
+      await eventQueries.saveEvent(normalized);
+      saved++;
+    } catch (error) {
+      console.error(`Failed to cache event "${event.name || event.id}":`, error.message);
+    }
+  }
+
+  if (events.length > 0) {
+    console.log(`\n=== LL2 EVENTS CACHE FILL ===\n    Fetched: ${events.length}\n    Saved/skipped idempotently: ${saved}`);
+  }
+}
+
+async function fetchExternalEvents({ fromDate, toDate }) {
+  const params = new URLSearchParams({
+    limit: String(EVENTS_PAGE_SIZE),
+    mode: "detailed",
+    ordering: "date",
+    date__gte: toStartOfDay(fromDate),
+    date__lte: toEndOfDay(toDate),
+  });
+
+  let url = `${LL2_BASE}/events/?${params}`;
+  const events = [];
+
+  while (url) {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!response.ok) {
+      const err = new Error(data?.detail || `LL2 API returned ${response.status}`);
+      err.status = response.status;
+      throw err;
+    }
+
+    events.push(...(data.results || []));
+    url = data.next;
+  }
+
+  return events;
+}
+
+async function normalizeExternalEvent(event) {
+  if (!event?.name || !event.date) return null;
+
+  const location = event.location
+    ? await locationQueries.findOrCreateLocationByName(event.location)
+    : null;
+  const primaryVideo = Array.isArray(event.vid_urls) ? event.vid_urls[0] : null;
+
+  return {
+    name: event.name,
+    startTime: event.date,
+    endTime: null,
+    datePrecision: event.date_precision?.name || null,
+    description: event.description || null,
+    eventType: event.type?.name || DEFAULT_EVENT_TYPE,
+    webcastLive: event.webcast_live ?? false,
+    videoUrl: primaryVideo?.url || null,
+    imageUrl: event.image?.image_url || event.image?.thumbnail_url || null,
+    locationId: location?.location_id || null,
+  };
 }
 
 /**

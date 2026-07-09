@@ -214,17 +214,22 @@ async function upsertConstellation(client, shortName, fullName, cache) {
 // the astronomy service starts populating them — see the TODO in astronomyService.js.
 // ---------------------------------------------------------------------------
 
-async function getCachedMoonPhase(locationId) {
+async function getCachedMoonPhase(locationId, phaseDate) {
+  const values = [locationId];
+  const dateFilter = phaseDate ? "AND phase_date = $2::date" : "";
+  if (phaseDate) values.push(phaseDate);
+
   const result = await database.query(
     `
       SELECT moon_phase_id, location_id, phase_date, phase_string,
              phase_fraction, phase_angle, cached_at
       FROM public.moon_phases
       WHERE location_id = $1
+        ${dateFilter}
       ORDER BY cached_at DESC
       LIMIT 1
     `,
-    [locationId]
+    values
   );
   return result.rows[0] || null;
 }
