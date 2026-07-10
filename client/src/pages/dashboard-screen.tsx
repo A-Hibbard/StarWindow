@@ -31,6 +31,7 @@ import {
   type CalendarEvent,
   type UpcomingLaunch,
 } from '@/utilities/events-api';
+import { fetchIssPasses, type IssPass } from '@/utilities/iss-api';
 import { fetchNearestLocation } from '@/utilities/location-api';
 import { fetchMoonPhase } from '@/utilities/moon-api';
 import { fetchViewingScore } from '@/utilities/viewing-score-api';
@@ -151,6 +152,87 @@ function formatLaunchMeta(launch: UpcomingLaunch | null) {
   return detailParts.join(' | ') || 'Upcoming rocket launch.';
 }
 
+function formatIssTime(value?: string | null) {
+  if (!value) return 'Time TBD';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function formatIssClock(value?: string | null) {
+  if (!value) return '--';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function formatIssDuration(seconds?: number | null) {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return null;
+  if (seconds < 60) return `${Math.round(seconds)} sec`;
+  return `${Math.round(seconds / 60)} min`;
+}
+
+function formatIssBadge({
+  isLoading,
+  error,
+  hasLocation,
+  pass,
+}: {
+  isLoading: boolean;
+  error: string | null;
+  hasLocation: boolean;
+  pass: IssPass | null;
+}) {
+  if (isLoading) return 'LOADING';
+  if (!hasLocation) return 'LOCATION';
+  if (error) return 'UNAVAILABLE';
+  if (!pass) return 'NO PASS';
+  return pass.visible === false ? 'UPCOMING' : 'VISIBLE';
+}
+
+function formatIssTitle({
+  isLoading,
+  error,
+  hasLocation,
+  pass,
+}: {
+  isLoading: boolean;
+  error: string | null;
+  hasLocation: boolean;
+  pass: IssPass | null;
+}) {
+  if (isLoading) return 'Loading next ISS pass...';
+  if (!hasLocation) return 'Location required';
+  if (error) return 'ISS pass unavailable';
+  if (!pass) return 'No visible ISS passes';
+  return 'Next ISS Pass';
+}
+
+function formatIssMeta(pass: IssPass | null) {
+  if (!pass) return 'Enable location to check visible ISS passes near you.';
+
+  const visibleDuration = formatIssDuration(pass.visible_duration_sec ?? pass.duration_sec);
+  const details = [
+    `Rises ${formatIssTime(pass.rise?.time)}${pass.rise?.direction ? ` ${pass.rise.direction}` : ''}`,
+    pass.peak?.elevation_deg != null ? `Peak ${Math.round(pass.peak.elevation_deg)} deg` : null,
+    visibleDuration ? `Visible ${visibleDuration}` : null,
+  ].filter(Boolean);
+
+  return details.join(' | ') || 'Visible pass details are unavailable.';
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const today = new Date();
@@ -191,6 +273,9 @@ export default function DashboardScreen() {
   const [nextLaunch, setNextLaunch] = useState<UpcomingLaunch | null>(null);
   const [isLaunchLoading, setIsLaunchLoading] = useState(true);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [nextIssPass, setNextIssPass] = useState<IssPass | null>(null);
+  const [isIssLoading, setIsIssLoading] = useState(true);
+  const [issError, setIssError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -277,6 +362,24 @@ export default function DashboardScreen() {
       }
     }
 
+    async function loadIssPass(coords: { latitude: number; longitude: number }) {
+      try {
+        setIsIssLoading(true);
+        setIssError(null);
+        const iss = await fetchIssPasses({ ...coords, count: 1, daysAhead: 5 });
+        if (!isMounted) return;
+        setNextIssPass(iss.passes?.[0] ?? null);
+      } catch (error) {
+        console.log('ISS pass fetch error:', error);
+        if (isMounted) {
+          setNextIssPass(null);
+          setIssError('Could not load ISS pass data');
+        }
+      } finally {
+        if (isMounted) setIsIssLoading(false);
+      }
+    }
+
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -287,6 +390,9 @@ export default function DashboardScreen() {
           setViewingScoreStatus('location-required');
           setLocationLabel(LOCATION_REQUIRED_LABEL);
           setLocationMessage(LOCATION_SETTINGS_MESSAGE);
+          setNextIssPass(null);
+          setIsIssLoading(false);
+          setIssError(null);
           clearMoonData('Location permission required');
           return;
         }
@@ -302,6 +408,7 @@ export default function DashboardScreen() {
         setLocationMessage('Sky data is based on your current browser location.');
         void loadMoonPhase(coords);
         void loadViewingScore(coords);
+        void loadIssPass(coords);
 
         try {
           const nearest = await fetchNearestLocation(coords);
@@ -325,13 +432,16 @@ export default function DashboardScreen() {
         } catch (error) {
           console.log('Reverse geocode unavailable:', error);
         }
-      } catch (err) {
+      } catch {
         if (!isMounted) return;
         setBrowserCoords(null);
         setViewingScore(null);
         setViewingScoreStatus('unavailable');
         setLocationLabel(LOCATION_REQUIRED_LABEL);
         setLocationMessage(LOCATION_SETTINGS_MESSAGE);
+        setNextIssPass(null);
+        setIsIssLoading(false);
+        setIssError(null);
         clearMoonData('Location unavailable');
       }
     })();
@@ -367,7 +477,13 @@ export default function DashboardScreen() {
         <ScrollView style={styles.main} contentContainerStyle={styles.mainContent}>
           <View style={styles.topBar}>
             <View>
-              <Text style={styles.eyebrow}>TONIGHT'S SKY · MON, JUN 22</Text>
+              <Text style={styles.eyebrow}>
+                {`TONIGHT SKY - ${today.toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                }).toUpperCase()}`}
+              </Text>
               <Text style={styles.greeting}>
                 {getSkyGreeting(viewingScore, viewingScoreStatus)}, {firstName}
               </Text>
@@ -478,6 +594,31 @@ export default function DashboardScreen() {
               thumb={<LaunchThumb imageUrl={nextLaunch?.image ?? null} />}
               onPress={() => router.push('/explore')}
             />
+
+            <PreviewCard
+              eyebrow="ISS PASS"
+              badge={formatIssBadge({
+                isLoading: isIssLoading,
+                error: issError,
+                hasLocation: Boolean(browserCoords),
+                pass: nextIssPass,
+              })}
+              badgeColor={Palette.accentMoon}
+              title={formatIssTitle({
+                isLoading: isIssLoading,
+                error: issError,
+                hasLocation: Boolean(browserCoords),
+                pass: nextIssPass,
+              })}
+              meta={
+                isIssLoading
+                  ? 'Checking visible passes for your location.'
+                  : issError
+                  ? issError
+                  : formatIssMeta(nextIssPass)
+              }
+              thumb={<IssThumb pass={nextIssPass} isLoading={isIssLoading} />}
+            />
           </View>
 
 
@@ -522,10 +663,10 @@ function PreviewCard({
   title: string;
   meta: string;
   thumb: React.ReactNode;
-  onPress: () => void;
+  onPress?: () => void;
 }) {
   return (
-    <Pressable style={styles.previewCard} onPress={onPress}>
+    <Pressable style={styles.previewCard} onPress={onPress} disabled={!onPress}>
       <View style={styles.previewThumb}>{thumb}</View>
       <View style={styles.previewBody}>
         <View style={styles.previewEyebrowRow}>
@@ -602,6 +743,51 @@ function LaunchThumb({ imageUrl }: { imageUrl?: string | null }) {
           <Text style={styles.launchRocket}>🚀</Text>
         </>
       )}
+    </View>
+  );
+}
+
+function IssThumb({ pass, isLoading }: { pass: IssPass | null; isLoading: boolean }) {
+  const duration = formatIssDuration(pass?.visible_duration_sec ?? pass?.duration_sec);
+
+  return (
+    <View style={styles.issThumb}>
+      <View style={styles.issHorizon} />
+      <View style={styles.issOrbitArc} />
+      <View style={[styles.issNode, styles.issRiseNode]} />
+      <View style={[styles.issNode, styles.issPeakNode]} />
+      <View style={[styles.issNode, styles.issSetNode]} />
+      <View style={styles.issStation}>
+        <Image
+          source={require('@/assets/images/iss.png')}
+          style={styles.issStationIcon}
+          resizeMode="contain"
+        />
+      </View>
+
+      <View style={styles.issReadout}>
+        <Text style={styles.issReadoutLabel}>NEXT VISIBLE PASS</Text>
+        <Text style={styles.issReadoutValue}>
+          {isLoading ? 'Checking orbit...' : pass ? formatIssClock(pass.rise?.time) : 'No pass found'}
+        </Text>
+      </View>
+
+      <View style={styles.issStatsRow}>
+        <View style={styles.issStatPill}>
+          <Text style={styles.issStatLabel}>RISE</Text>
+          <Text style={styles.issStatValue}>{pass?.rise?.direction ?? '--'}</Text>
+        </View>
+        <View style={styles.issStatPill}>
+          <Text style={styles.issStatLabel}>PEAK</Text>
+          <Text style={styles.issStatValue}>
+            {pass?.peak?.elevation_deg != null ? `${Math.round(pass.peak.elevation_deg)} deg` : '--'}
+          </Text>
+        </View>
+        <View style={styles.issStatPill}>
+          <Text style={styles.issStatLabel}>DUR</Text>
+          <Text style={styles.issStatValue}>{duration ?? '--'}</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -904,6 +1090,128 @@ const styles = StyleSheet.create({
   launchImageScrim: {
     ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(5, 10, 22, 0.16)',
+  },
+
+  issThumb: {
+    flex: 1,
+    backgroundColor: Palette.bgDeep,
+    overflow: 'hidden',
+    padding: spacing.sm,
+  },
+  issHorizon: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 42,
+    height: 1,
+    backgroundColor: Palette.border,
+  },
+  issOrbitArc: {
+    position: 'absolute',
+    left: '10%',
+    right: '10%',
+    bottom: 24,
+    height: 104,
+    borderTopWidth: 2,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: Palette.accentMoon,
+    borderTopLeftRadius: 180,
+    borderTopRightRadius: 180,
+    opacity: 0.58,
+  },
+  issNode: {
+    position: 'absolute',
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: Palette.accentGlow,
+    borderWidth: 1,
+    borderColor: Palette.bgDeep,
+  },
+  issRiseNode: {
+    left: '16%',
+    bottom: 39,
+  },
+  issPeakNode: {
+    left: '50%',
+    marginLeft: -3.5,
+    top: 34,
+  },
+  issSetNode: {
+    right: '16%',
+    bottom: 39,
+  },
+  issStation: {
+    position: 'absolute',
+    top: 52,
+    left: '50%',
+    marginLeft: -44,
+    width: 88,
+    height: 46,
+    borderRadius: Radius.sm,
+    backgroundColor: 'rgba(0, 212, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Palette.accentMoon,
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 5,
+  },
+  issStationIcon: {
+    width: '100%',
+    height: '100%',
+  },
+  issReadout: {
+    position: 'absolute',
+    top: 4,
+    left: 8,
+    right: 8,
+    alignItems: 'center',
+    gap: 2,
+  },
+  issReadoutLabel: {
+    color: Palette.textTertiary,
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '700',
+  },
+  issReadoutValue: {
+    color: Palette.textPrimary,
+    fontSize: 17,
+    lineHeight: 21,
+    fontWeight: '700',
+  },
+  issStatsRow: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 8,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  issStatPill: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: Palette.surface + 'E6',
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.sm,
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+  },
+  issStatLabel: {
+    color: Palette.textTertiary,
+    fontSize: 8,
+    lineHeight: 10,
+    fontWeight: '700',
+  },
+  issStatValue: {
+    color: Palette.textPrimary,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
   },
 
   profileCard: {

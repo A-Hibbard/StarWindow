@@ -25,7 +25,7 @@ async function getIssPasses({ lat, lon, n = 5, daysAhead = 5 }) {
 
   // 1) Cache check — reuse the most recent cached batch if still fresh.
   const cachedRows = await issQueries.getCachedPasses(location.location_id);
-  if (cachedRows.length > 0 && !isCacheStale(cachedRows[0].cached_at, TTL_MINUTES.ISS)) {
+  if (hasUsablePassCache(cachedRows) && !isCacheStale(cachedRows[0].cached_at, TTL_MINUTES.ISS)) {
     console.log("\n=== ISS PASSES (cache hit) ===");
     return {
       observer: { lat, lon },
@@ -51,7 +51,7 @@ async function getIssPasses({ lat, lon, n = 5, daysAhead = 5 }) {
     riseCompass: pass.rise?.compass || null,
     peakTime: pass.culmination?.time || null,
     peakCompass: pass.culmination?.compass || null,
-    peakElevationDeg: pass.culmination?.elevation ?? null,
+    peakElevationDeg: pass.culmination?.elevation_deg ?? pass.culmination?.elevation ?? null,
     setTime: pass.set?.time || null,
     setCompass: pass.set?.compass || null,
     durationSec: pass.duration_sec ?? null,
@@ -112,6 +112,10 @@ function num(v) {
   if (v === null || v === undefined) return null;
   const n = Number(v);
   return Number.isNaN(n) ? null : n;
+}
+
+function hasUsablePassCache(rows) {
+  return rows.length > 0 && rows.every((row) => row.peak_elevation_deg !== null);
 }
 
 module.exports = { getIssPasses };
