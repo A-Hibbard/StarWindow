@@ -3,7 +3,16 @@ const path = require('path');
 const bodyParser= require ("body-parser");
 const ensureLoggedIn = require("./config/ensureLoggedIn")
 
-require('dotenv').config()
+require('dotenv').config({ path: path.join(__dirname, ".env") })
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason);
+});
+
 require("./config/database");
 
 const cors=require("cors");//cors is a cross origin resource sharing  alows to use back end with a different url from front-end
@@ -42,6 +51,10 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 3001//if we don't have port in .env it is automaticaly running on 3001
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Express app is running on port: ${PORT}`)
 })
+
+server.on("error", (error) => {
+  console.error("Express server error:", error);
+});
