@@ -16,6 +16,7 @@ import {
   Pressable,
   SafeAreaView,
   Image,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
@@ -24,17 +25,22 @@ import { ShootingStar } from '@/components/shooting-star';
 import { MonthGrid } from '@/components/calendar/month-grid';
 import { StarMap } from '@/components/star-map';
 import { useCalendarEvents } from '@/hooks/use-calendar-events';
+import { fetchVisibleBodies, type VisibleBody } from '@/utilities/bodies-api';
 import {
+  fetchNextUpcomingSpacewalk,
   fetchNextUpcomingLaunch,
   getCalendarEventsForMonth,
   getNextCalendarEvent,
   type CalendarEvent,
+  type UpcomingSpacewalk,
   type UpcomingLaunch,
 } from '@/utilities/events-api';
 import { fetchIssPasses, type IssPass } from '@/utilities/iss-api';
 import { fetchNearestLocation } from '@/utilities/location-api';
 import { fetchMoonPhase } from '@/utilities/moon-api';
+import { fetchNasaImageNews, type NewsArticle } from '@/utilities/news-api';
 import { fetchViewingScore } from '@/utilities/viewing-score-api';
+import { fetchCurrentWeather, type WeatherResponse } from '@/utilities/weather-api';
 import * as usersService from '@/utilities/users-service';
 
 const STARS = Array.from({ length: 150 }, (_, i) => ({
@@ -233,6 +239,169 @@ function formatIssMeta(pass: IssPass | null) {
   return details.join(' | ') || 'Visible pass details are unavailable.';
 }
 
+function toNumber(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function titleCase(value?: string | null) {
+  if (!value) return null;
+  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatTemperature(value?: number | null, units?: string | null) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '--';
+  const suffix = units === 'metric' ? 'C' : units === 'standard' ? 'K' : 'F';
+  return `${Math.round(value)} deg ${suffix}`;
+}
+
+function formatWeatherBadge({
+  isLoading,
+  error,
+  hasLocation,
+}: {
+  isLoading: boolean;
+  error: string | null;
+  hasLocation: boolean;
+}) {
+  if (isLoading) return 'LOADING';
+  if (!hasLocation) return 'LOCATION';
+  if (error) return 'UNAVAILABLE';
+  return 'TODAY';
+}
+
+function formatWeatherMeta(weather: WeatherResponse | null) {
+  if (!weather) return 'Enable location to load current observing weather.';
+
+  const details = [
+    titleCase(weather.conditions),
+    weather.clouds_pct != null ? `Clouds ${Math.round(weather.clouds_pct)}%` : null,
+    weather.humidity != null ? `Humidity ${Math.round(weather.humidity)}%` : null,
+  ].filter(Boolean);
+
+  return details.join(' | ') || 'Current weather details unavailable.';
+}
+
+function getTopVisibleBodies(bodies: VisibleBody[]) {
+  return [...bodies]
+    .filter((body) => body.body)
+    .sort((a, b) => (toNumber(b.altitude_degrees) ?? -Infinity) - (toNumber(a.altitude_degrees) ?? -Infinity))
+    .slice(0, 4);
+}
+
+function formatBodiesBadge({
+  isLoading,
+  error,
+  hasLocation,
+  count,
+}: {
+  isLoading: boolean;
+  error: string | null;
+  hasLocation: boolean;
+  count: number;
+}) {
+  if (isLoading) return 'LOADING';
+  if (!hasLocation) return 'LOCATION';
+  if (error) return 'UNAVAILABLE';
+  return `${count} VISIBLE`;
+}
+
+function formatBodiesMeta(bodies: VisibleBody[]) {
+  const topBodies = getTopVisibleBodies(bodies);
+  if (topBodies.length === 0) return 'No visible bodies found for tonight at 10 PM.';
+
+  return topBodies
+    .slice(0, 3)
+    .map((body) => {
+      const altitude = toNumber(body.altitude_degrees);
+      return altitude == null ? body.body : `${body.body} ${Math.round(altitude)} deg`;
+    })
+    .join(' | ');
+}
+
+function formatSpacewalkDate(value?: string | null) {
+  if (!value) return 'TBD';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'TBD';
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function getSpacewalkCrew(spacewalk: UpcomingSpacewalk | null) {
+  return spacewalk?.crew?.map((member) => member.name).filter(Boolean).join(', ') || null;
+}
+
+function formatSpacewalkBadge({
+  isLoading,
+  error,
+  spacewalk,
+}: {
+  isLoading: boolean;
+  error: string | null;
+  spacewalk: UpcomingSpacewalk | null;
+}) {
+  if (isLoading) return 'LOADING';
+  if (error) return 'UNAVAILABLE';
+  if (!spacewalk) return 'NO EVA';
+  return spacewalk.schedule_status === 'latest' ? 'LATEST' : 'UPCOMING';
+}
+
+function formatSpacewalkMeta(spacewalk: UpcomingSpacewalk | null) {
+  if (!spacewalk) return 'No upcoming spacewalk found in the current feed.';
+
+  const prefix = spacewalk.schedule_status === 'latest' ? 'Latest:' : 'Next:';
+  const details = [
+    `${prefix} ${formatSpacewalkDate(spacewalk.start)}`,
+    spacewalk.space_station,
+    getSpacewalkCrew(spacewalk) ? `Crew: ${getSpacewalkCrew(spacewalk)}` : null,
+  ].filter(Boolean);
+
+  return details.join(' | ') || 'Upcoming spacewalk details unavailable.';
+}
+
+function formatNewsDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatNewsBadge({
+  isLoading,
+  error,
+  article,
+}: {
+  isLoading: boolean;
+  error: string | null;
+  article: NewsArticle | null;
+}) {
+  if (isLoading) return 'LOADING';
+  if (error) return 'UNAVAILABLE';
+  return article?.source === 'NASA Images' ? 'NASA IMAGE' : 'NASA';
+}
+
+function formatNewsMeta(article: NewsArticle | null) {
+  if (!article) return 'No NASA image story found in the current feed.';
+
+  return [article.source, formatNewsDate(article.published_at)].filter(Boolean).join(' | ') || 'NASA image library';
+}
+
+function openExternalUrl(url?: string | null) {
+  if (!url) return;
+
+  if (typeof window !== 'undefined' && typeof window.open === 'function') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+
+  void Linking.openURL(url);
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const today = new Date();
@@ -276,6 +445,18 @@ export default function DashboardScreen() {
   const [nextIssPass, setNextIssPass] = useState<IssPass | null>(null);
   const [isIssLoading, setIsIssLoading] = useState(true);
   const [issError, setIssError] = useState<string | null>(null);
+  const [visibleBodies, setVisibleBodies] = useState<VisibleBody[]>([]);
+  const [isBodiesLoading, setIsBodiesLoading] = useState(true);
+  const [bodiesError, setBodiesError] = useState<string | null>(null);
+  const [currentWeather, setCurrentWeather] = useState<WeatherResponse | null>(null);
+  const [isWeatherLoading, setIsWeatherLoading] = useState(true);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
+  const [nextSpacewalk, setNextSpacewalk] = useState<UpcomingSpacewalk | null>(null);
+  const [isSpacewalkLoading, setIsSpacewalkLoading] = useState(true);
+  const [spacewalkError, setSpacewalkError] = useState<string | null>(null);
+  const [nasaArticle, setNasaArticle] = useState<NewsArticle | null>(null);
+  const [isNewsLoading, setIsNewsLoading] = useState(true);
+  const [newsError, setNewsError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -312,6 +493,53 @@ export default function DashboardScreen() {
         if (isMounted) setIsLaunchLoading(false);
       }
     })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSpacewalk() {
+      try {
+        setIsSpacewalkLoading(true);
+        setSpacewalkError(null);
+        const spacewalk = await fetchNextUpcomingSpacewalk();
+        if (!isMounted) return;
+        setNextSpacewalk(spacewalk);
+      } catch (error) {
+        console.log('Spacewalk fetch error:', error);
+        if (isMounted) {
+          setNextSpacewalk(null);
+          setSpacewalkError('Could not load spacewalk schedule');
+        }
+      } finally {
+        if (isMounted) setIsSpacewalkLoading(false);
+      }
+    }
+
+    async function loadNasaImageNews() {
+      try {
+        setIsNewsLoading(true);
+        setNewsError(null);
+        const news = await fetchNasaImageNews({ limit: 1, query: 'space station' });
+        if (!isMounted) return;
+        setNasaArticle(news.results?.[0] ?? null);
+      } catch (error) {
+        console.log('NASA image news fetch error:', error);
+        if (isMounted) {
+          setNasaArticle(null);
+          setNewsError('Could not load NASA image feed');
+        }
+      } finally {
+        if (isMounted) setIsNewsLoading(false);
+      }
+    }
+
+    void loadSpacewalk();
+    void loadNasaImageNews();
 
     return () => {
       isMounted = false;
@@ -380,6 +608,42 @@ export default function DashboardScreen() {
       }
     }
 
+    async function loadVisibleBodies(coords: { latitude: number; longitude: number }) {
+      try {
+        setIsBodiesLoading(true);
+        setBodiesError(null);
+        const bodies = await fetchVisibleBodies(coords);
+        if (!isMounted) return;
+        setVisibleBodies(bodies.results ?? []);
+      } catch (error) {
+        console.log('Visible bodies fetch error:', error);
+        if (isMounted) {
+          setVisibleBodies([]);
+          setBodiesError('Could not load visible bodies');
+        }
+      } finally {
+        if (isMounted) setIsBodiesLoading(false);
+      }
+    }
+
+    async function loadWeather(coords: { latitude: number; longitude: number }) {
+      try {
+        setIsWeatherLoading(true);
+        setWeatherError(null);
+        const weather = await fetchCurrentWeather(coords);
+        if (!isMounted) return;
+        setCurrentWeather(weather);
+      } catch (error) {
+        console.log('Weather fetch error:', error);
+        if (isMounted) {
+          setCurrentWeather(null);
+          setWeatherError('Could not load weather');
+        }
+      } finally {
+        if (isMounted) setIsWeatherLoading(false);
+      }
+    }
+
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -393,6 +657,12 @@ export default function DashboardScreen() {
           setNextIssPass(null);
           setIsIssLoading(false);
           setIssError(null);
+          setVisibleBodies([]);
+          setIsBodiesLoading(false);
+          setBodiesError(null);
+          setCurrentWeather(null);
+          setIsWeatherLoading(false);
+          setWeatherError(null);
           clearMoonData('Location permission required');
           return;
         }
@@ -409,6 +679,8 @@ export default function DashboardScreen() {
         void loadMoonPhase(coords);
         void loadViewingScore(coords);
         void loadIssPass(coords);
+        void loadVisibleBodies(coords);
+        void loadWeather(coords);
 
         try {
           const nearest = await fetchNearestLocation(coords);
@@ -442,6 +714,12 @@ export default function DashboardScreen() {
         setNextIssPass(null);
         setIsIssLoading(false);
         setIssError(null);
+        setVisibleBodies([]);
+        setIsBodiesLoading(false);
+        setBodiesError(null);
+        setCurrentWeather(null);
+        setIsWeatherLoading(false);
+        setWeatherError(null);
         clearMoonData('Location unavailable');
       }
     })();
@@ -507,7 +785,7 @@ export default function DashboardScreen() {
           </Pressable>
 
 
-          {/* ---------- MOON HERO ---------- */}
+          {/* ---------- ISS HERO ---------- */}
           <View style={styles.hero}>
             <View style={styles.heroLeft}>
 
@@ -518,34 +796,33 @@ export default function DashboardScreen() {
                 </Text>
               </View>
 
-
-              <Text style={styles.heroEyebrow}>MOON PHASE · LIVE</Text>
+              <Text style={styles.heroEyebrow}>ISS PASS - LIVE</Text>
               <Text style={styles.heroTitle}>
-                {moonPhaseName}
+                {formatIssTitle({
+                  isLoading: isIssLoading,
+                  error: issError,
+                  hasLocation: Boolean(browserCoords),
+                  pass: nextIssPass,
+                })}
               </Text>
 
               <View style={styles.heroStats}>
-                <Stat label="ILLUMINATION" value={formatMoonPercent(moonPhasePercent)} />
-                <Stat label="MOON TREND" value={formatMoonTrend(moonPhaseTrend)} />
-                <Stat label="PHASE DATE" value={formatMoonDate(moonPhaseDate)} />
+                <Stat label="RISE" value={nextIssPass?.rise?.time ? formatIssClock(nextIssPass.rise.time) : '--'} />
+                <Stat label="PEAK" value={nextIssPass?.peak?.elevation_deg != null ? `${Math.round(nextIssPass.peak.elevation_deg)} deg` : '--'} />
+                <Stat label="DURATION" value={formatIssDuration(nextIssPass?.visible_duration_sec ?? nextIssPass?.duration_sec) ?? '--'} />
               </View>
 
-
+              <Text style={styles.heroMetaText}>
+                {isIssLoading
+                  ? 'Checking visible passes for your location.'
+                  : issError
+                  ? issError
+                  : formatIssMeta(nextIssPass)}
+              </Text>
             </View>
 
-            <View style={styles.moonStage}>
-              <View style={styles.moonOrbitRing} />
-              <View style={styles.moonDisc}>
-                {moonImageUrl ? (
-                  <Image
-                    source={{ uri: moonImageUrl }}
-                    style={styles.moonImage}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.moonLoading} />
-                )}
-              </View>
+            <View style={styles.issHeroStage}>
+              <IssThumb pass={nextIssPass} isLoading={isIssLoading} variant="hero" />
             </View>
           </View>
 
@@ -596,28 +873,116 @@ export default function DashboardScreen() {
             />
 
             <PreviewCard
-              eyebrow="ISS PASS"
-              badge={formatIssBadge({
-                isLoading: isIssLoading,
-                error: issError,
+              eyebrow="MOON PHASE"
+              badge={moonPhasePercent === null ? 'LOADING' : 'LIVE'}
+              badgeColor={Palette.accentMoon}
+              title={moonPhaseName}
+              meta={`${formatMoonPercent(moonPhasePercent)} illuminated | ${formatMoonTrend(moonPhaseTrend)} | ${formatMoonDate(moonPhaseDate)}`}
+              thumb={<MoonThumb imageUrl={moonImageUrl} phaseName={moonPhaseName} />}
+            />
+
+            <PreviewCard
+              eyebrow="VISIBLE BODIES"
+              badge={formatBodiesBadge({
+                isLoading: isBodiesLoading,
+                error: bodiesError,
                 hasLocation: Boolean(browserCoords),
-                pass: nextIssPass,
+                count: visibleBodies.length,
+              })}
+              badgeColor={Palette.accentBlue}
+              title={
+                isBodiesLoading
+                  ? 'Loading visible bodies...'
+                  : bodiesError
+                  ? 'Visible bodies unavailable'
+                  : visibleBodies.length > 0
+                  ? 'Planets & Bodies Tonight'
+                  : 'No visible bodies found'
+              }
+              meta={
+                isBodiesLoading
+                  ? 'Checking the sky at 10 PM for your location.'
+                  : bodiesError
+                  ? bodiesError
+                  : formatBodiesMeta(visibleBodies)
+              }
+              thumb={<BodiesThumb bodies={visibleBodies} isLoading={isBodiesLoading} />}
+            />
+
+            <PreviewCard
+              eyebrow="SPACEWALKS"
+              badge={formatSpacewalkBadge({
+                isLoading: isSpacewalkLoading,
+                error: spacewalkError,
+                spacewalk: nextSpacewalk,
+              })}
+              badgeColor={Palette.accentGreen}
+              title={
+                isSpacewalkLoading
+                  ? 'Loading spacewalk schedule...'
+                  : spacewalkError
+                  ? 'Spacewalks unavailable'
+                  : nextSpacewalk?.name ?? 'No spacewalk data'
+              }
+              meta={
+                isSpacewalkLoading
+                  ? 'Checking upcoming and recent EVA data.'
+                  : spacewalkError
+                  ? spacewalkError
+                  : formatSpacewalkMeta(nextSpacewalk)
+              }
+              thumb={<SpacewalkThumb spacewalk={nextSpacewalk} isLoading={isSpacewalkLoading} />}
+            />
+
+            <PreviewCard
+              eyebrow="NASA IMAGE"
+              badge={formatNewsBadge({
+                isLoading: isNewsLoading,
+                error: newsError,
+                article: nasaArticle,
               })}
               badgeColor={Palette.accentMoon}
-              title={formatIssTitle({
-                isLoading: isIssLoading,
-                error: issError,
-                hasLocation: Boolean(browserCoords),
-                pass: nextIssPass,
-              })}
-              meta={
-                isIssLoading
-                  ? 'Checking visible passes for your location.'
-                  : issError
-                  ? issError
-                  : formatIssMeta(nextIssPass)
+              title={
+                isNewsLoading
+                  ? 'Loading NASA image...'
+                  : newsError
+                  ? 'NASA image unavailable'
+                  : nasaArticle?.title ?? 'No NASA image found'
               }
-              thumb={<IssThumb pass={nextIssPass} isLoading={isIssLoading} />}
+              meta={
+                isNewsLoading
+                  ? 'Fetching the latest NASA image library item.'
+                  : newsError
+                  ? newsError
+                  : formatNewsMeta(nasaArticle)
+              }
+              thumb={<NewsThumb article={nasaArticle} isLoading={isNewsLoading} />}
+              onPress={nasaArticle?.url ? () => openExternalUrl(nasaArticle.url) : undefined}
+            />
+
+            <PreviewCard
+              eyebrow="TODAY'S WEATHER"
+              badge={formatWeatherBadge({
+                isLoading: isWeatherLoading,
+                error: weatherError,
+                hasLocation: Boolean(browserCoords),
+              })}
+              badgeColor={Palette.accentRed}
+              title={
+                isWeatherLoading
+                  ? 'Loading weather...'
+                  : weatherError
+                  ? 'Weather unavailable'
+                  : `${formatTemperature(currentWeather?.temp, currentWeather?.units)} Today`
+              }
+              meta={
+                isWeatherLoading
+                  ? 'Checking clouds, humidity, and current conditions.'
+                  : weatherError
+                  ? weatherError
+                  : formatWeatherMeta(currentWeather)
+              }
+              thumb={<WeatherThumb weather={currentWeather} isLoading={isWeatherLoading} />}
             />
           </View>
 
@@ -675,8 +1040,8 @@ function PreviewCard({
             <Text style={[styles.badgeText, { color: badgeColor }]}>{badge}</Text>
           </View>
         </View>
-        <Text style={styles.previewTitle}>{title}</Text>
-        <Text style={styles.previewMeta}>{meta}</Text>
+        <Text style={styles.previewTitle} numberOfLines={2}>{title}</Text>
+        <Text style={styles.previewMeta} numberOfLines={3}>{meta}</Text>
       </View>
     </Pressable>
   );
@@ -693,6 +1058,24 @@ function CalendarThumb({ events }: { events: CalendarEvent[] }) {
       events={events}
       compact
     />
+  );
+}
+
+function MoonThumb({ imageUrl, phaseName }: { imageUrl: string | null; phaseName: string }) {
+  return (
+    <View style={styles.moonThumb}>
+      <View style={styles.moonThumbRing} />
+      <View style={styles.moonThumbDisc}>
+        {imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={styles.moonImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.moonLoading} />
+        )}
+      </View>
+      <View style={styles.moonThumbLabel}>
+        <Text style={styles.bodyNameText} numberOfLines={1}>{phaseName}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -747,17 +1130,25 @@ function LaunchThumb({ imageUrl }: { imageUrl?: string | null }) {
   );
 }
 
-function IssThumb({ pass, isLoading }: { pass: IssPass | null; isLoading: boolean }) {
+function IssThumb({
+  pass,
+  isLoading,
+  variant = 'card',
+}: {
+  pass: IssPass | null;
+  isLoading: boolean;
+  variant?: 'card' | 'hero';
+}) {
   const duration = formatIssDuration(pass?.visible_duration_sec ?? pass?.duration_sec);
 
   return (
-    <View style={styles.issThumb}>
+    <View style={[styles.issThumb, variant === 'hero' && styles.issHeroThumb]}>
       <View style={styles.issHorizon} />
-      <View style={styles.issOrbitArc} />
-      <View style={[styles.issNode, styles.issRiseNode]} />
-      <View style={[styles.issNode, styles.issPeakNode]} />
-      <View style={[styles.issNode, styles.issSetNode]} />
-      <View style={styles.issStation}>
+      <View style={[styles.issOrbitArc, variant === 'hero' && styles.issHeroOrbitArc]} />
+      <View style={[styles.issNode, styles.issRiseNode, variant === 'hero' && styles.issHeroRiseNode]} />
+      <View style={[styles.issNode, styles.issPeakNode, variant === 'hero' && styles.issHeroPeakNode]} />
+      <View style={[styles.issNode, styles.issSetNode, variant === 'hero' && styles.issHeroSetNode]} />
+      <View style={[styles.issStation, variant === 'hero' && styles.issHeroStation]}>
         <Image
           source={require('@/assets/images/iss.png')}
           style={styles.issStationIcon}
@@ -788,6 +1179,127 @@ function IssThumb({ pass, isLoading }: { pass: IssPass | null; isLoading: boolea
           <Text style={styles.issStatValue}>{duration ?? '--'}</Text>
         </View>
       </View>
+    </View>
+  );
+}
+
+function BodiesThumb({ bodies, isLoading }: { bodies: VisibleBody[]; isLoading: boolean }) {
+  const topBodies = getTopVisibleBodies(bodies);
+
+  return (
+    <View style={styles.bodiesThumb}>
+      <View style={styles.bodiesSkyArc} />
+      <View style={styles.bodiesHorizon} />
+      {topBodies.slice(0, 4).map((body, index) => (
+        <View
+          key={`${body.body}-${index}`}
+          style={[
+            styles.bodyDot,
+            index === 0 && styles.bodyDotPrimary,
+            { left: `${18 + index * 20}%` as any, top: `${58 - index * 9}%` as any },
+          ]}
+        />
+      ))}
+      <View style={styles.bodiesReadout}>
+        <Text style={styles.tileReadoutLabel}>VISIBLE TONIGHT</Text>
+        <Text style={styles.tileReadoutValue}>
+          {isLoading ? 'Checking sky...' : `${bodies.length} bodies`}
+        </Text>
+      </View>
+      <View style={styles.bodyNameRow}>
+        {topBodies.slice(0, 3).map((body, index) => (
+          <View key={`${body.body}-pill-${index}`} style={styles.bodyNamePill}>
+            <Text style={styles.bodyNameText} numberOfLines={1}>{body.body}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function SpacewalkThumb({
+  spacewalk,
+  isLoading,
+}: {
+  spacewalk: UpcomingSpacewalk | null;
+  isLoading: boolean;
+}) {
+  const crewCount = spacewalk?.crew?.length ?? 0;
+
+  return (
+    <View style={styles.spacewalkThumb}>
+      <View style={styles.earthCurve} />
+      <View style={styles.stationBar} />
+      <View style={styles.stationModule} />
+      <View style={styles.evaTether} />
+      <View style={styles.evaHelmet} />
+      <View style={styles.spacewalkReadout}>
+        <Text style={styles.tileReadoutLabel}>{spacewalk?.schedule_status === 'latest' ? 'LATEST EVA' : 'NEXT EVA'}</Text>
+        <Text style={styles.tileReadoutValue} numberOfLines={1}>
+          {isLoading ? 'Checking schedule...' : spacewalk ? formatSpacewalkDate(spacewalk.start) : 'No EVA'}
+        </Text>
+      </View>
+      <View style={styles.spacewalkCrewPill}>
+        <Text style={styles.bodyNameText}>{crewCount > 0 ? `${crewCount} crew` : 'Crew TBD'}</Text>
+      </View>
+    </View>
+  );
+}
+
+function NewsThumb({ article, isLoading }: { article: NewsArticle | null; isLoading: boolean }) {
+  return (
+    <View style={styles.newsThumb}>
+      {article?.image_url ? (
+        <>
+          <Image source={{ uri: article.image_url }} style={styles.newsImage} resizeMode="cover" />
+          <View style={styles.newsScrim} />
+        </>
+      ) : (
+        <View style={styles.newsFallback}>
+          <Text style={styles.newsFallbackText}>NASA</Text>
+        </View>
+      )}
+      <View style={styles.newsReadout}>
+        <Text style={styles.tileReadoutLabel}>NASA IMAGE</Text>
+        <Text style={styles.tileReadoutValue} numberOfLines={2}>
+          {isLoading ? 'Loading...' : article?.title ?? 'No image found'}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function WeatherThumb({ weather, isLoading }: { weather: WeatherResponse | null; isLoading: boolean }) {
+  const clouds = Math.max(0, Math.min(100, weather?.clouds_pct ?? 0));
+  const humidity = Math.max(0, Math.min(100, weather?.humidity ?? 0));
+
+  return (
+    <View style={styles.weatherThumb}>
+      <View style={styles.weatherSun} />
+      <View style={[styles.weatherCloud, styles.weatherCloudBack]} />
+      <View style={styles.weatherCloud} />
+      <View style={styles.weatherReadout}>
+        <Text style={styles.tileReadoutLabel}>CURRENT CONDITIONS</Text>
+        <Text style={styles.weatherTempValue}>
+          {isLoading ? 'Loading...' : formatTemperature(weather?.temp, weather?.units)}
+        </Text>
+      </View>
+      <View style={styles.weatherBars}>
+        <WeatherBar label="Clouds" value={clouds} />
+        <WeatherBar label="Humidity" value={humidity} />
+      </View>
+    </View>
+  );
+}
+
+function WeatherBar({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.weatherBarRow}>
+      <Text style={styles.weatherBarLabel}>{label}</Text>
+      <View style={styles.weatherBarTrack}>
+        <View style={[styles.weatherBarFill, { width: `${value}%` as any }]} />
+      </View>
+      <Text style={styles.weatherBarValue}>{Math.round(value)}%</Text>
     </View>
   );
 }
@@ -876,6 +1388,11 @@ const styles = StyleSheet.create({
     rowGap: spacing.sm,
     columnGap: spacing.lg,
   },
+  heroMetaText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: Palette.textSecondary,
+  },
   statLabel: {
     fontSize: 10,
     color: Palette.textSecondary,
@@ -954,6 +1471,56 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: Palette.surfaceRaised,
+  },
+  issHeroStage: {
+    width: '100%',
+    height: 220,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+    backgroundColor: Palette.bgDeep,
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+  },
+  moonThumb: {
+    flex: 1,
+    backgroundColor: Palette.bgDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  moonThumbRing: {
+    position: 'absolute',
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    borderStyle: 'dashed',
+    opacity: 0.55,
+  },
+  moonThumbDisc: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    overflow: 'hidden',
+    backgroundColor: Palette.bgDeep,
+    shadowColor: Palette.accentMoon,
+    shadowOpacity: 0.36,
+    shadowRadius: 22,
+    elevation: 6,
+  },
+  moonThumbLabel: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 8,
+    backgroundColor: Palette.surface + 'E6',
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.sm,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    alignItems: 'center',
   },
 
   sectionLabelRow: {
@@ -1098,6 +1665,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     padding: spacing.sm,
   },
+  issHeroThumb: {
+    minHeight: 220,
+  },
   issHorizon: {
     position: 'absolute',
     left: 14,
@@ -1120,6 +1690,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 180,
     opacity: 0.58,
   },
+  issHeroOrbitArc: {
+    left: '8%',
+    right: '8%',
+    bottom: 48,
+    height: 120,
+  },
   issNode: {
     position: 'absolute',
     width: 7,
@@ -1133,14 +1709,25 @@ const styles = StyleSheet.create({
     left: '16%',
     bottom: 39,
   },
+  issHeroRiseNode: {
+    left: '14%',
+    bottom: 45,
+  },
   issPeakNode: {
     left: '50%',
     marginLeft: -3.5,
-    top: 34,
+    top: 38,
+  },
+  issHeroPeakNode: {
+    top: 45,
   },
   issSetNode: {
     right: '16%',
     bottom: 39,
+  },
+  issHeroSetNode: {
+    right: '14%',
+    bottom: 45,
   },
   issStation: {
     position: 'absolute',
@@ -1157,6 +1744,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 18,
     elevation: 5,
+  },
+  issHeroStation: {
+    top: 86,
+    marginLeft: -58,
+    width: 116,
+    height: 60,
   },
   issStationIcon: {
     width: '100%',
@@ -1212,6 +1805,296 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     fontWeight: '700',
+  },
+
+  tileReadoutLabel: {
+    color: Palette.textTertiary,
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '700',
+  },
+  tileReadoutValue: {
+    color: Palette.textPrimary,
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+
+  bodiesThumb: {
+    flex: 1,
+    backgroundColor: Palette.bgDeep,
+    overflow: 'hidden',
+  },
+  bodiesSkyArc: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 28,
+    height: 112,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: Palette.accentBlue,
+    borderTopLeftRadius: 160,
+    borderTopRightRadius: 160,
+    opacity: 0.45,
+  },
+  bodiesHorizon: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 34,
+    height: 1,
+    backgroundColor: Palette.border,
+  },
+  bodyDot: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Palette.textSecondary,
+    borderWidth: 1,
+    borderColor: Palette.bgDeep,
+  },
+  bodyDotPrimary: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Palette.accentMoon,
+    shadowColor: Palette.accentMoon,
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+  },
+  bodiesReadout: {
+    position: 'absolute',
+    top: 10,
+    left: 12,
+    right: 12,
+    alignItems: 'center',
+  },
+  bodyNameRow: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 8,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  bodyNamePill: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: Palette.surface + 'E6',
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.sm,
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+  },
+  bodyNameText: {
+    color: Palette.textPrimary,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+
+  spacewalkThumb: {
+    flex: 1,
+    backgroundColor: Palette.bgDeep,
+    overflow: 'hidden',
+  },
+  earthCurve: {
+    position: 'absolute',
+    left: -20,
+    right: -20,
+    bottom: -72,
+    height: 120,
+    borderTopWidth: 2,
+    borderColor: Palette.accentGreen,
+    borderTopLeftRadius: 180,
+    borderTopRightRadius: 180,
+    backgroundColor: Palette.surfaceRaised,
+    opacity: 0.75,
+  },
+  stationBar: {
+    position: 'absolute',
+    top: 58,
+    left: '23%',
+    width: '54%',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Palette.textSecondary,
+  },
+  stationModule: {
+    position: 'absolute',
+    top: 50,
+    left: '45%',
+    width: 28,
+    height: 24,
+    borderRadius: Radius.sm,
+    backgroundColor: Palette.accentGreen,
+  },
+  evaTether: {
+    position: 'absolute',
+    top: 72,
+    left: '54%',
+    width: 44,
+    height: 1,
+    backgroundColor: Palette.border,
+    transform: [{ rotate: '18deg' }],
+  },
+  evaHelmet: {
+    position: 'absolute',
+    top: 76,
+    left: '68%',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Palette.textPrimary,
+    borderWidth: 2,
+    borderColor: Palette.accentGreen,
+  },
+  spacewalkReadout: {
+    position: 'absolute',
+    top: 10,
+    left: 12,
+    right: 12,
+    alignItems: 'center',
+  },
+  spacewalkCrewPill: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    backgroundColor: Palette.surface + 'E6',
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.sm,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+
+  newsThumb: {
+    flex: 1,
+    backgroundColor: Palette.bgDeep,
+    overflow: 'hidden',
+  },
+  newsImage: {
+    width: '100%',
+    height: '100%',
+  },
+  newsScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(5, 10, 22, 0.3)',
+  },
+  newsFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Palette.surfaceRaised,
+  },
+  newsFallbackText: {
+    color: Palette.accentMoon,
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '800',
+  },
+  newsReadout: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 10,
+    backgroundColor: Palette.surface + 'E6',
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.sm,
+    padding: 8,
+  },
+
+  weatherThumb: {
+    flex: 1,
+    backgroundColor: Palette.bgDeep,
+    overflow: 'hidden',
+  },
+  weatherSun: {
+    position: 'absolute',
+    top: 34,
+    right: 38,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: Palette.accentMoon,
+    opacity: 0.85,
+    shadowColor: Palette.accentMoon,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+  },
+  weatherCloud: {
+    position: 'absolute',
+    top: 56,
+    left: 48,
+    width: 96,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Palette.textSecondary,
+    opacity: 0.9,
+  },
+  weatherCloudBack: {
+    top: 48,
+    left: 30,
+    width: 76,
+    opacity: 0.55,
+  },
+  weatherReadout: {
+    position: 'absolute',
+    top: 10,
+    left: 12,
+    right: 12,
+    alignItems: 'center',
+  },
+  weatherTempValue: {
+    color: Palette.textPrimary,
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: '800',
+  },
+  weatherBars: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 10,
+    gap: 6,
+  },
+  weatherBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  weatherBarLabel: {
+    width: 50,
+    color: Palette.textSecondary,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
+  },
+  weatherBarTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Palette.surfaceRaised,
+    overflow: 'hidden',
+  },
+  weatherBarFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: Palette.accentMoon,
+  },
+  weatherBarValue: {
+    width: 34,
+    color: Palette.textPrimary,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
+    textAlign: 'right',
   },
 
   profileCard: {

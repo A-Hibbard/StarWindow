@@ -57,7 +57,7 @@ async function getBodyPositions({
     console.log("\n=== BODY POSITIONS (cache hit) ===");
     return {
       location_id: location.location_id,
-      count: cachedRows.length,
+      count: cachedRows.filter((r) => Number(r.altitude_degrees) > 0).length,
       results: cachedRows
         .filter((r) => Number(r.altitude_degrees) > 0)
         .map(transformCachedRow),
@@ -83,7 +83,6 @@ async function getBodyPositions({
   });
 
   const data = await response.json();
-  console.log(JSON.stringify(data, null, 2));
 
   if (!response.ok) {
     const err = new Error(
@@ -236,6 +235,10 @@ function getApproxMoonPhase(when) {
 
 // Flatten AstronomyAPI rows -> the normalized shape saveBodyPositions() expects.
 function transformBodiesResponse(data, locationId) {
+  if (Array.isArray(data?.data?.rows)) {
+    return transformRowsOutput(data.data.rows, locationId);
+  }
+
   const rows = data?.data?.table?.rows || [];
   const out = [];
 
@@ -263,6 +266,38 @@ function transformBodiesResponse(data, locationId) {
       });
     }
   }
+  return out;
+}
+
+function transformRowsOutput(rows, locationId) {
+  const out = [];
+
+  for (const row of rows) {
+    const bodyName = row.body?.name || row.entry?.name;
+
+    for (const positionRow of row.positions || []) {
+      const pos = positionRow.position || {};
+      const horizontal = pos.horizontal || pos.horizonal || {};
+      const equatorial = pos.equatorial || {};
+      const constellation = pos.constellation || {};
+
+      out.push({
+        bodyName: positionRow.name || bodyName,
+        constellationShort: constellation.short || null,
+        constellationFull: constellation.name || null,
+        locationId,
+        observedDate: positionRow.date,
+        altitudeDegrees: toNum(horizontal.altitude?.degrees),
+        azimuthDegrees: toNum(horizontal.azimuth?.degrees),
+        distanceFromEarthKm: toNum(positionRow.distance?.fromEarth?.km),
+        rightAscension: toNum(equatorial.rightAscension?.hours),
+        declination: toNum(equatorial.declination?.degrees),
+        magnitude: toNum(positionRow.extraInfo?.magnitude),
+        elongation: toNum(positionRow.extraInfo?.elongation),
+      });
+    }
+  }
+
   return out;
 }
 

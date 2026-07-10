@@ -49,12 +49,15 @@ type RawSpacewalk = {
   duration?: string | number | null;
   location?: string | null;
   space_station?: string | null;
+  schedule_status?: 'upcoming' | 'latest';
   crew?: {
     name?: string;
     nationality?: string;
     role?: string;
   }[];
 };
+
+export type UpcomingSpacewalk = RawSpacewalk;
 
 type RawBody = {
   body?: string;
@@ -375,6 +378,30 @@ export async function fetchNextUpcomingLaunch(now = new Date()): Promise<Upcomin
   });
   const launchesData = await sendRequest<null, LaunchesResponse>(`${LAUNCHES_URL}?${launchesParams}`);
   return launchesData.results?.[0] ?? null;
+}
+
+export async function fetchNextUpcomingSpacewalk(now = new Date()): Promise<UpcomingSpacewalk | null> {
+  const end = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
+  const spacewalksParams = new URLSearchParams({
+    limit: '100',
+    from_date: now.toISOString(),
+    to_date: end.toISOString(),
+  });
+  const spacewalksData = await sendRequest<null, SpacewalksResponse>(`${EVENTS_URL}/spacewalks?${spacewalksParams}`);
+
+  const nextSpacewalk = (spacewalksData.results ?? [])
+    .filter((spacewalk) => spacewalk.start && new Date(spacewalk.start).getTime() >= now.getTime())
+    .sort((a, b) => new Date(a.start ?? 0).getTime() - new Date(b.start ?? 0).getTime())[0];
+
+  if (nextSpacewalk) return { ...nextSpacewalk, schedule_status: 'upcoming' };
+
+  const latestParams = new URLSearchParams({
+    limit: '1',
+  });
+  const latestSpacewalksData = await sendRequest<null, SpacewalksResponse>(`${EVENTS_URL}/spacewalks?${latestParams}`);
+  const latestSpacewalk = latestSpacewalksData.results?.[0] ?? null;
+
+  return latestSpacewalk ? { ...latestSpacewalk, schedule_status: 'latest' } : null;
 }
 
 export function getCalendarEventsForMonth(events: CalendarEvent[], year: number, month: number) {
