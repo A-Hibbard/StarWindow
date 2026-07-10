@@ -6,6 +6,7 @@ const ensureLoggedIn = require('../../config/ensureLoggedIn');
 router.post('/', usersCtrl.create);
 router.post('/signup', usersCtrl.create);
 router.post('/login', usersCtrl.login);
+router.get('/me', ensureLoggedIn, usersCtrl.me);
 router.get('/check-token', ensureLoggedIn, usersCtrl.checkToken);
 router.put('/event-types', ensureLoggedIn, usersCtrl.updateEventTypes);
 

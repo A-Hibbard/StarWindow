@@ -1,5 +1,5 @@
 import sendRequest from './send-request';
-import type { LoginCredentials, SignUpData } from './users-service';
+import type { AuthUser, LoginCredentials, SignUpData } from './users-service';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
 const BASE_URL = `${API_BASE}/api/users`;
@@ -14,6 +14,10 @@ export function login(credentials: LoginCredentials): Promise<string> {
 
 export function checkToken(): Promise<string> {
   return sendRequest(`${BASE_URL}/check-token`);
+}
+
+export function getCurrentUser(): Promise<AuthUser> {
+  return sendRequest(`${BASE_URL}/me`);
 }
 
 export function saveEventTypes(eventTypeIds: number[]): Promise<{ eventTypeIds: number[] }> {

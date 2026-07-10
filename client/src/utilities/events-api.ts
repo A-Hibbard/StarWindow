@@ -40,6 +40,8 @@ type RawLaunch = {
   image?: string | null;
 };
 
+export type UpcomingLaunch = RawLaunch;
+
 type RawSpacewalk = {
   name?: string;
   start?: string;
@@ -364,6 +366,15 @@ export async function fetchCalendarEvents(input?: number | CalendarEventsQuery):
   ].filter((event): event is CalendarEvent => event !== null);
 
   return dedupeCalendarEvents(allEvents);
+}
+
+export async function fetchNextUpcomingLaunch(now = new Date()): Promise<UpcomingLaunch | null> {
+  const launchesParams = new URLSearchParams({
+    limit: '1',
+    from_date: now.toISOString(),
+  });
+  const launchesData = await sendRequest<null, LaunchesResponse>(`${LAUNCHES_URL}?${launchesParams}`);
+  return launchesData.results?.[0] ?? null;
 }
 
 export function getCalendarEventsForMonth(events: CalendarEvent[], year: number, month: number) {

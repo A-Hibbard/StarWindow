@@ -13,6 +13,10 @@
   border-radius: 20px;
 }
 
+.previewMapContainer {
+  border-radius: 0;
+}
+
 /* Rocket launch-site marker: red square with the rocket art layered on top.
  * The square is pure CSS so the marker is visible even before icon_rocket.png
  * exists; the <img> simply sits inside it. */

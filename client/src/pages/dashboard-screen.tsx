@@ -22,14 +22,19 @@ import * as Location from 'expo-location';
 import { Palette, Radius } from '@/constants/tokens';
 import { ShootingStar } from '@/components/shooting-star';
 import { MonthGrid } from '@/components/calendar/month-grid';
+import { StarMap } from '@/components/star-map';
 import { useCalendarEvents } from '@/hooks/use-calendar-events';
 import {
+  fetchNextUpcomingLaunch,
   getCalendarEventsForMonth,
   getNextCalendarEvent,
   type CalendarEvent,
+  type UpcomingLaunch,
 } from '@/utilities/events-api';
 import { fetchNearestLocation } from '@/utilities/location-api';
 import { fetchMoonPhase } from '@/utilities/moon-api';
+import { fetchViewingScore } from '@/utilities/viewing-score-api';
+import * as usersService from '@/utilities/users-service';
 
 const STARS = Array.from({ length: 150 }, (_, i) => ({
   top: (i * 23.7) % 100,
@@ -49,6 +54,8 @@ const spacing = {
 
 const LOCATION_REQUIRED_LABEL = 'Location required';
 const LOCATION_SETTINGS_MESSAGE = 'Enable browser location access in site settings to load your sky data.';
+const DASHBOARD_MAP_FALLBACK_CENTER: [number, number] = [39.157, -84.538];
+const DASHBOARD_MAP_ZOOM = 11;
 
 function formatMoonTrend(value: string | null) {
   return value ?? 'Loading';
@@ -69,9 +76,88 @@ function formatCoordinates(latitude: number, longitude: number) {
   return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
 }
 
+function getDisplayName(user: usersService.AuthUser | null) {
+  const fullName = [user?.f_name, user?.l_name].filter(Boolean).join(' ').trim();
+  return fullName || user?.email || 'Guest';
+}
+
+function getFirstName(user: usersService.AuthUser | null) {
+  return user?.f_name?.trim() || getDisplayName(user);
+}
+
+function getProfileMeta(user: usersService.AuthUser | null) {
+  if (user?.status_id != null && user?.status) return `Lvl ${user.status_id} ${user.status}`;
+  if (user?.status_id != null) return `Lvl ${user.status_id}`;
+  if (user?.status) return user.status;
+  return 'Status unavailable';
+}
+
+type ViewingScoreStatus = 'loading' | 'ready' | 'unavailable' | 'location-required';
+
+function getSkyGreeting(score: number | null, status: ViewingScoreStatus) {
+  if (status === 'location-required') return 'Enable location for sky conditions';
+  if (status === 'unavailable') return 'Sky conditions unavailable';
+  if (score === null) return 'Checking sky conditions';
+  if (score >= 80) return 'Excellent stargazing tonight';
+  if (score >= 65) return 'Clear skies ahead';
+  if (score >= 50) return 'Decent sky conditions';
+  if (score >= 35) return 'Mixed viewing tonight';
+  return 'Poor viewing conditions';
+}
+
+function formatLaunchBadge(launch: UpcomingLaunch | null) {
+  if (!launch?.net) return 'TBD';
+
+  const launchDate = new Date(launch.net);
+  if (Number.isNaN(launchDate.getTime())) return 'TBD';
+
+  const diffMs = launchDate.getTime() - Date.now();
+  if (diffMs <= 0) return 'SOON';
+
+  const totalMinutes = Math.ceil(diffMs / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return `T-${days}D ${hours}H`;
+  if (hours > 0) return `T-${hours}H ${minutes}M`;
+  return `T-${minutes}M`;
+}
+
+function formatLaunchDate(value?: string) {
+  if (!value) return null;
+
+  const launchDate = new Date(value);
+  if (Number.isNaN(launchDate.getTime())) return null;
+
+  return launchDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function formatLaunchMeta(launch: UpcomingLaunch | null) {
+  if (!launch) return 'No upcoming launch found in the current feed.';
+
+  const detailParts = [
+    formatLaunchDate(launch.net),
+    launch.pad?.name,
+    launch.pad?.location,
+    launch.status,
+  ].filter(Boolean);
+
+  return detailParts.join(' | ') || 'Upcoming rocket launch.';
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const today = new Date();
+  const [user, setUser] = useState<usersService.AuthUser | null>(() => usersService.getUser());
+  const firstName = getFirstName(user);
+  const displayName = getDisplayName(user);
+  const profileMeta = getProfileMeta(user);
   const [browserCoords, setBrowserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const { events, isLoading: isCalendarLoading, error: calendarError } = useCalendarEvents(
     browserCoords ?? undefined
@@ -100,6 +186,52 @@ export default function DashboardScreen() {
   const [moonPhaseTrend, setMoonPhaseTrend] = useState<string | null>(null);
   const [moonPhaseDate, setMoonPhaseDate] = useState<string | null>(null);
   const [moonPhaseName, setMoonPhaseName] = useState('Waiting for location...');
+  const [viewingScore, setViewingScore] = useState<number | null>(null);
+  const [viewingScoreStatus, setViewingScoreStatus] = useState<ViewingScoreStatus>('loading');
+  const [nextLaunch, setNextLaunch] = useState<UpcomingLaunch | null>(null);
+  const [isLaunchLoading, setIsLaunchLoading] = useState(true);
+  const [launchError, setLaunchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    usersService.getCurrentUser()
+      .then((currentUser) => {
+        if (isMounted) setUser(currentUser);
+      })
+      .catch((error) => {
+        console.log('User profile unavailable:', error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      try {
+        setIsLaunchLoading(true);
+        setLaunchError(null);
+        const launch = await fetchNextUpcomingLaunch();
+        if (!isMounted) return;
+        setNextLaunch(launch);
+      } catch (error) {
+        console.log('Launch fetch error:', error);
+        if (!isMounted) return;
+        setNextLaunch(null);
+        setLaunchError('Could not load upcoming launches');
+      } finally {
+        if (isMounted) setIsLaunchLoading(false);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -129,12 +261,30 @@ export default function DashboardScreen() {
       }
     }
 
+    async function loadViewingScore(coords: { latitude: number; longitude: number }) {
+      try {
+        setViewingScoreStatus('loading');
+        const score = await fetchViewingScore(coords);
+        if (!isMounted) return;
+        setViewingScore(score.viewing_score ?? null);
+        setViewingScoreStatus(score.viewing_score == null ? 'unavailable' : 'ready');
+      } catch (error) {
+        console.log('Viewing score fetch error:', error);
+        if (isMounted) {
+          setViewingScore(null);
+          setViewingScoreStatus('unavailable');
+        }
+      }
+    }
+
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (!isMounted) return;
         if (status !== 'granted') {
           setBrowserCoords(null);
+          setViewingScore(null);
+          setViewingScoreStatus('location-required');
           setLocationLabel(LOCATION_REQUIRED_LABEL);
           setLocationMessage(LOCATION_SETTINGS_MESSAGE);
           clearMoonData('Location permission required');
@@ -151,6 +301,7 @@ export default function DashboardScreen() {
         setLocationLabel(formatCoordinates(coords.latitude, coords.longitude));
         setLocationMessage('Sky data is based on your current browser location.');
         void loadMoonPhase(coords);
+        void loadViewingScore(coords);
 
         try {
           const nearest = await fetchNearestLocation(coords);
@@ -177,6 +328,8 @@ export default function DashboardScreen() {
       } catch (err) {
         if (!isMounted) return;
         setBrowserCoords(null);
+        setViewingScore(null);
+        setViewingScoreStatus('unavailable');
         setLocationLabel(LOCATION_REQUIRED_LABEL);
         setLocationMessage(LOCATION_SETTINGS_MESSAGE);
         clearMoonData('Location unavailable');
@@ -215,16 +368,41 @@ export default function DashboardScreen() {
           <View style={styles.topBar}>
             <View>
               <Text style={styles.eyebrow}>TONIGHT'S SKY · MON, JUN 22</Text>
-              <Text style={styles.greeting}>Clear skies ahead, Sam</Text>
+              <Text style={styles.greeting}>
+                {getSkyGreeting(viewingScore, viewingScoreStatus)}, {firstName}
+              </Text>
             </View>
             <View style={styles.locationChip}>
               <Text style={styles.locationChipText}>📍 {locationLabel}</Text>
             </View>
           </View>
 
+{/*
+          <SectionLabel text="ACCOUNT" /> */}
+
+          <Pressable style={styles.profileCard} onPress={() => {}}>
+            <View style={styles.profileRing}>
+              <View style={styles.profileAvatar} />
+            </View>
+            <View style={{ marginLeft: spacing.md }}>
+              <Text style={styles.previewTitle}>{displayName}</Text>
+              <Text style={styles.previewMeta}>{profileMeta}</Text>
+            </View>
+          </Pressable>
+
+
           {/* ---------- MOON HERO ---------- */}
           <View style={styles.hero}>
             <View style={styles.heroLeft}>
+
+              <View style={styles.heroNow}>
+                <View style={styles.pulseDot} />
+                <Text style={styles.heroNowText}>
+                  {locationMessage}
+                </Text>
+              </View>
+
+
               <Text style={styles.heroEyebrow}>MOON PHASE · LIVE</Text>
               <Text style={styles.heroTitle}>
                 {moonPhaseName}
@@ -236,12 +414,7 @@ export default function DashboardScreen() {
                 <Stat label="PHASE DATE" value={formatMoonDate(moonPhaseDate)} />
               </View>
 
-              <View style={styles.heroNow}>
-                <View style={styles.pulseDot} />
-                <Text style={styles.heroNowText}>
-                  {locationMessage}
-                </Text>
-              </View>
+
             </View>
 
             <View style={styles.moonStage}>
@@ -279,33 +452,35 @@ export default function DashboardScreen() {
               badge="LIVE"
               badgeColor={Palette.accentGreen}
               title="Your Sky Tonight"
-              meta="Requires browser location access"
-              thumb={<MapThumb />}
+              meta={browserCoords ? locationLabel : 'Enable location for current sky map'}
+              thumb={<MapThumb coords={browserCoords} locationLabel={locationLabel} />}
               onPress={() => router.push('/map')}
             />
 
             <PreviewCard
               eyebrow="LAUNCHES"
-              badge="T–6H 12M"
+              badge={isLaunchLoading ? 'LOADING' : launchError ? 'UNAVAILABLE' : formatLaunchBadge(nextLaunch)}
               badgeColor={Palette.accentRed}
-              title="Falcon 9 · Starlink 11-4"
-              meta="Cape Canaveral SLC-40 · visible from your location"
-              thumb={<LaunchThumb />}
+              title={
+                isLaunchLoading
+                  ? 'Loading next launch...'
+                  : launchError
+                  ? 'Launch data unavailable'
+                  : nextLaunch?.name ?? 'No upcoming launches'
+              }
+              meta={
+                isLaunchLoading
+                  ? 'Fetching the latest launch schedule.'
+                  : launchError
+                  ? launchError
+                  : formatLaunchMeta(nextLaunch)
+              }
+              thumb={<LaunchThumb imageUrl={nextLaunch?.image ?? null} />}
               onPress={() => router.push('/explore')}
             />
           </View>
 
-          <SectionLabel text="ACCOUNT" />
 
-          <Pressable style={styles.profileCard} onPress={() => {}}>
-            <View style={styles.profileRing}>
-              <View style={styles.profileAvatar} />
-            </View>
-            <View style={{ marginLeft: spacing.md }}>
-              <Text style={styles.previewTitle}>Sam Rivera</Text>
-              <Text style={styles.previewMeta}>68% sky log complete · Lvl 4 Stargazer</Text>
-            </View>
-          </Pressable>
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -380,19 +555,53 @@ function CalendarThumb({ events }: { events: CalendarEvent[] }) {
   );
 }
 
-function MapThumb() {
+function MapThumb({
+  coords,
+  locationLabel,
+}: {
+  coords: { latitude: number; longitude: number } | null;
+  locationLabel: string;
+}) {
+  const center: [number, number] = coords
+    ? [coords.latitude, coords.longitude]
+    : DASHBOARD_MAP_FALLBACK_CENTER;
+  const userLocation = coords ? { lat: coords.latitude, lng: coords.longitude } : null;
+
   return (
-    <View style={styles.mapThumb}>
-      <View style={styles.mapPin} />
+    <View style={styles.mapThumbWrap}>
+      <StarMap
+        center={center}
+        zoom={DASHBOARD_MAP_ZOOM}
+        userLocation={userLocation}
+        showLightPollution
+        preview
+        style={styles.mapThumb}
+      />
+      {coords && (
+        <View style={styles.mapLocationChip}>
+          <Text style={styles.mapLocationChipText} numberOfLines={1}>
+            Current: {locationLabel}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
 
-function LaunchThumb() {
+function LaunchThumb({ imageUrl }: { imageUrl?: string | null }) {
   return (
     <View style={styles.launchThumb}>
-      <View style={styles.launchTrail} />
-      <Text style={styles.launchRocket}>🚀</Text>
+      {imageUrl ? (
+        <>
+          <Image source={{ uri: imageUrl }} style={styles.launchImage} resizeMode="cover" />
+          <View style={styles.launchImageScrim} />
+        </>
+      ) : (
+        <>
+          <View style={styles.launchTrail} />
+          <Text style={styles.launchRocket}>🚀</Text>
+        </>
+      )}
     </View>
   );
 }
@@ -496,11 +705,20 @@ const styles = StyleSheet.create({
   heroNow: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'stretch',
     backgroundColor: Palette.accentMoon + '14',
     borderWidth: 1,
     borderColor: Palette.accentMoon + '40',
     borderRadius: Radius.sm,
+    borderTopLeftRadius: Radius.lg,
+    borderTopRightRadius: Radius.lg,
+    borderBottomLeftRadius: Radius.sm,
+    borderBottomRightRadius: Radius.sm,
     padding: 10,
+    marginTop: -spacing.lg,
+    marginLeft: -spacing.lg,
+    marginRight: -spacing.lg,
+    marginBottom: spacing.lg,
     gap: 8,
   },
   pulseDot: {
@@ -631,20 +849,34 @@ const styles = StyleSheet.create({
     color: Palette.textSecondary,
   },
 
-  mapThumb: {
+  mapThumbWrap: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: Palette.bgDeep,
   },
-  mapPin: {
+  mapThumb: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  mapLocationChip: {
     position: 'absolute',
-    top: '55%',
-    left: '42%',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Palette.accentMoon,
-    borderWidth: 1.5,
-    borderColor: Palette.bgDeep,
+    top: 8,
+    left: 8,
+    right: 8,
+    backgroundColor: Palette.surface + 'E6',
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.pill,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+  },
+  mapLocationChipText: {
+    color: Palette.textPrimary,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
   },
 
   launchThumb: {
@@ -665,6 +897,14 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   launchRocket: { fontSize: 20 },
+  launchImage: {
+    width: '100%',
+    height: '100%',
+  },
+  launchImageScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(5, 10, 22, 0.16)',
+  },
 
   profileCard: {
     flexDirection: 'row',

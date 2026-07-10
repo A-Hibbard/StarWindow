@@ -61,5 +61,7 @@ export interface StarMapProps {
   onLaunchesEnable?: () => void;
   /** Toggle the light-pollution overlay (web). Defaults to on. */
   showLightPollution?: boolean;
+  /** Render a compact, non-interactive map for dashboard previews. */
+  preview?: boolean;
   style?: StyleProp<ViewStyle>;
 }

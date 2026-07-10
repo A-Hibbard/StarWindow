@@ -116,6 +116,7 @@ export default function StarMapImpl({
   onSelectSpot,
   onLaunchesEnable,
   showLightPollution = true,
+  preview = false,
 }: StarMapProps) {
   const [layers, setLayers] = useState<LayerState>({
     lightBasemap: false,
@@ -153,9 +154,16 @@ export default function StarMapImpl({
       <MapContainer
         center={center}
         zoom={zoom}
-        scrollWheelZoom
+        scrollWheelZoom={!preview}
+        dragging={!preview}
+        doubleClickZoom={!preview}
+        touchZoom={!preview}
+        boxZoom={!preview}
+        keyboard={!preview}
+        zoomControl={!preview}
+        attributionControl={!preview}
         style={{ height: '100%', width: '100%' }}
-        className={classes.mapContainer}>
+        className={`${classes.mapContainer} ${preview ? classes.previewMapContainer : ''}`}>
         <Recenter center={center} zoom={zoom} />
 
         {/* Base map — key forces a clean swap between providers. */}
@@ -262,7 +270,7 @@ export default function StarMapImpl({
         )}
       </MapContainer>
 
-      <LayersPanel layers={layers} onToggle={toggle} />
+      {!preview && <LayersPanel layers={layers} onToggle={toggle} />}
     </>
   );
 }
