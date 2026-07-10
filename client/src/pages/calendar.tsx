@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import * as Location from 'expo-location';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -45,6 +46,8 @@ export default function CalendarScreen() {
   const [loadedWindow, setLoadedWindow] = useState(() =>
     getCalendarFetchWindow(today.getFullYear(), today.getMonth())
   );
+  const [browserCoords, setBrowserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationNotice, setLocationNotice] = useState('Requesting browser location for visible sky events.');
 
   useEffect(() => {
     const currentMonthIndex = getMonthIndex(currentYear, currentMonth);
@@ -56,12 +59,45 @@ export default function CalendarScreen() {
     }
   }, [currentMonth, currentYear, loadedWindow.endMonthIndex, loadedWindow.startMonthIndex]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (cancelled) return;
+        if (status !== 'granted') {
+          setBrowserCoords(null);
+          setLocationNotice('Location is required for visible sky events. Enable location in browser site settings and reload.');
+          return;
+        }
+
+        const position = await Location.getCurrentPositionAsync({});
+        if (cancelled) return;
+        setBrowserCoords({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setLocationNotice('Visible sky events use your current browser location.');
+      } catch {
+        if (cancelled) return;
+        setBrowserCoords(null);
+        setLocationNotice("Couldn't get your location. Check browser and system location settings, then reload.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const calendarQuery = useMemo(() => {
     return {
       fromDate: loadedWindow.fromDate,
       toDate: loadedWindow.toDate,
+      ...(browserCoords ?? {}),
     };
-  }, [loadedWindow.fromDate, loadedWindow.toDate]);
+  }, [browserCoords, loadedWindow.fromDate, loadedWindow.toDate]);
   const { events, isLoading, error } = useCalendarEvents(calendarQuery);
 
   //============================
@@ -94,6 +130,9 @@ export default function CalendarScreen() {
             </ThemedView>
           ))}
         </View>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.locationNotice}>
+          {locationNotice}
+        </ThemedText>
 
         {/* ================================================================
             "Frosted Glass" Container for Calendar + Selected Day
@@ -440,6 +479,10 @@ const styles = StyleSheet.create({
   },
   categoryText: {
     color: '#A7C4FF',
+  },
+  locationNotice: {
+    paddingHorizontal: Spacing.two,
+    lineHeight: 18,
   },
   pressed: {
     opacity: 0.7,

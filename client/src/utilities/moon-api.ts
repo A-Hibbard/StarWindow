@@ -12,6 +12,7 @@ export type MoonPhaseResponse = {
   phase_fraction?: number | null;
   phase_percent?: number | null;
   phase_angle?: number | null;
+  phase_trend?: string | null;
   age_days?: number | null;
   cached_at?: string | null;
   image_url?: string | null;
@@ -62,10 +63,15 @@ function getApproxMoonPhase(date: Date): MoonPhaseResponse {
     phase_fraction: phasePercent / 100,
     phase_percent: Math.round(phasePercent),
     phase_angle: Math.round((age / SYNODIC_MONTH_DAYS) * 360),
+    phase_trend: getMoonTrend(age),
     age_days: age,
     cached_at: null,
     image_url: null,
   };
+}
+
+function getMoonTrend(age: number) {
+  return age < SYNODIC_MONTH_DAYS / 2 ? 'Growing' : 'Shrinking';
 }
 
 function getMoonPhaseName(age: number) {

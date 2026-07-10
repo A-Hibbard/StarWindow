@@ -2,14 +2,21 @@ const express = require("express");
 const router = express.Router();
 const astronomyService = require("../../services/astronomyService");
 
-// Cincinnati, OH — default test coordinates.
-const CINCINNATI = { lat: 39.1031, lon: -84.512 };
+function requiredCoordinate(value, name) {
+  const coordinate = Number(value);
+  if (value === undefined || value === "" || !Number.isFinite(coordinate)) {
+    const error = new Error(`${name} is required and must be a valid coordinate.`);
+    error.status = 400;
+    throw error;
+  }
+  return coordinate;
+}
 
 // GET /api/astronomy/bodies?latitude=&longitude=&elevation=&from_date=&to_date=&time=
 router.get("/bodies", async (req, res) => {
   const {
-    latitude = CINCINNATI.lat,
-    longitude = CINCINNATI.lon,
+    latitude,
+    longitude,
     elevation = 0,
     from_date,
     to_date,
@@ -18,8 +25,8 @@ router.get("/bodies", async (req, res) => {
 
   try {
     const result = await astronomyService.getBodyPositions({
-      latitude: Number(latitude),
-      longitude: Number(longitude),
+      latitude: requiredCoordinate(latitude, "latitude"),
+      longitude: requiredCoordinate(longitude, "longitude"),
       elevation: Number(elevation),
       fromDate: from_date,
       toDate: to_date,
@@ -35,15 +42,15 @@ router.get("/bodies", async (req, res) => {
 // GET /api/astronomy/moon-phase?latitude=&longitude=&date=
 router.get("/moon-phase", async (req, res) => {
   const {
-    latitude = CINCINNATI.lat,
-    longitude = CINCINNATI.lon,
+    latitude,
+    longitude,
     date,
   } = req.query;
 
   try {
     const result = await astronomyService.getMoonPhase({
-      latitude: Number(latitude),
-      longitude: Number(longitude),
+      latitude: requiredCoordinate(latitude, "latitude"),
+      longitude: requiredCoordinate(longitude, "longitude"),
       date,
     });
     res.json(result);

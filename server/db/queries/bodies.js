@@ -7,7 +7,7 @@
 //     altitude_degrees, azimuth_degrees, distance_from_earth_km, right_ascension,
 //     declination, constellation_id FK, magnitude, elongation, cached_at)
 //   moon_phases(moon_phase_id PK, location_id FK, phase_date, phase_string,
-//     phase_fraction, phase_angle, cached_at)
+//     phase_fraction, phase_angle, image_url, cached_at)
 //
 // NOTE: celestial_bodies / constellations have no declared UNIQUE constraint in
 // the schema, so the upserts below use SELECT-then-INSERT inside a transaction
@@ -222,7 +222,7 @@ async function getCachedMoonPhase(locationId, phaseDate) {
   const result = await database.query(
     `
       SELECT moon_phase_id, location_id, phase_date, phase_string,
-             phase_fraction, phase_angle, cached_at
+             phase_fraction, phase_angle, image_url, cached_at
       FROM public.moon_phases
       WHERE location_id = $1
         ${dateFilter}
@@ -241,21 +241,23 @@ async function getCachedMoonPhase(locationId, phaseDate) {
  * @param {string} data.phaseString
  * @param {number} data.phaseFraction
  * @param {number} data.phaseAngle
+ * @param {string|null} [data.imageUrl]
  * @param {Date|string} [data.cachedAt]
  */
 async function saveMoonPhase(data) {
   const result = await database.query(
     `
       INSERT INTO public.moon_phases
-        (location_id, phase_date, phase_string, phase_fraction, phase_angle, cached_at)
-      VALUES ($1, $2, $3, $4, $5, $6)
+        (location_id, phase_date, phase_string, phase_fraction, phase_angle, image_url, cached_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       ON CONFLICT (location_id, phase_date) DO UPDATE SET
         phase_string   = EXCLUDED.phase_string,
         phase_fraction = EXCLUDED.phase_fraction,
         phase_angle    = EXCLUDED.phase_angle,
+        image_url      = EXCLUDED.image_url,
         cached_at      = EXCLUDED.cached_at
       RETURNING moon_phase_id, location_id, phase_date, phase_string,
-                phase_fraction, phase_angle, cached_at
+                phase_fraction, phase_angle, image_url, cached_at
     `,
     [
       data.locationId,
@@ -263,6 +265,7 @@ async function saveMoonPhase(data) {
       data.phaseString,
       data.phaseFraction,
       data.phaseAngle,
+      data.imageUrl || null,
       data.cachedAt || new Date(),
     ]
   );

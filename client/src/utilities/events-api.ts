@@ -5,8 +5,6 @@ const EVENTS_URL = `${API_BASE}/api/events`;
 const LAUNCHES_URL = `${API_BASE}/api/launches`;
 const ASTRONOMY_BODIES_URL = `${API_BASE}/api/astronomy/bodies`;
 
-const CINCINNATI = { latitude: 39.1031, longitude: -84.512 };
-
 type RawEvent = {
   id?: number | string;
   name?: string;
@@ -313,8 +311,13 @@ function buildCalendarQuery(input?: number | CalendarEventsQuery): Required<Pick
 }
 
 export async function fetchCalendarEvents(input?: number | CalendarEventsQuery): Promise<CalendarEvent[]> {
-  const { limit, fromDate, toDate, latitude = CINCINNATI.latitude, longitude = CINCINNATI.longitude } = buildCalendarQuery(input);
+  const { limit, fromDate, toDate, latitude, longitude } = buildCalendarQuery(input);
   const boundedLimit = typeof limit === 'number' && Number.isFinite(limit) && limit > 0 ? limit : undefined;
+  const hasCoordinates =
+    typeof latitude === 'number' &&
+    Number.isFinite(latitude) &&
+    typeof longitude === 'number' &&
+    Number.isFinite(longitude);
 
   const eventsParams = new URLSearchParams();
   if (boundedLimit) eventsParams.set('limit', String(boundedLimit));
@@ -335,15 +338,18 @@ export async function fetchCalendarEvents(input?: number | CalendarEventsQuery):
 
   const launchesUrl = `${LAUNCHES_URL}?${launchesParams}`;
   const spacewalksUrl = `${EVENTS_URL}/spacewalks?${spacewalksParams}`;
-  const bodiesUrl =
-    `${ASTRONOMY_BODIES_URL}?latitude=${latitude}&longitude=${longitude}` +
-    `&from_date=${fromDate}&to_date=${toDate}&time=22:00:00`;
+  const bodiesUrl = hasCoordinates
+    ? `${ASTRONOMY_BODIES_URL}?latitude=${latitude}&longitude=${longitude}` +
+      `&from_date=${fromDate}&to_date=${toDate}&time=22:00:00`
+    : null;
 
   const [eventsData, launchesData, spacewalksData, bodiesData] = await Promise.all([
     fetchOptionalCalendarSource<EventsResponse>(eventsUrl, 'events'),
     fetchOptionalCalendarSource<LaunchesResponse>(launchesUrl, 'launches'),
     fetchOptionalCalendarSource<SpacewalksResponse>(spacewalksUrl, 'spacewalks'),
-    fetchOptionalCalendarSource<BodiesResponse>(bodiesUrl, 'visible bodies'),
+    bodiesUrl
+      ? fetchOptionalCalendarSource<BodiesResponse>(bodiesUrl, 'visible bodies')
+      : Promise.resolve(null),
   ]);
 
   if (!eventsData && !launchesData && !spacewalksData && !bodiesData) {

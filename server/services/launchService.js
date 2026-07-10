@@ -1,13 +1,8 @@
-// Launch service: fetch LL2 /launches/upcoming/ -> transform -> persist
-// (events + rocket_launch + lookups) -> return frontend-friendly data.
-//
-// NOTE: rocket_launch has no updated_at/cached_at column, so there's no TTL
-// cache check yet (see TODO in db/queries/launches.js). The service fetches live
-// and persists, de-duping by launch name to avoid piling up duplicate rows on
-// repeat calls. Add an isCacheStale() gate using TTL_MINUTES.LAUNCHES once a
-// timestamp column exists.
+// Launch service: cache-check -> fetch LL2 /launches/upcoming/ -> transform ->
+// persist/update (events + rocket_launch + lookups) -> return cached shape.
 
 const launchQueries = require("../db/queries/launches");
+const { isCacheStale, TTL_MINUTES } = require("../middleware/cache");
 
 const LL2_BASE = "https://lldev.thespacedevs.com/2.3.0";
 
@@ -20,6 +15,15 @@ const LL2_BASE = "https://lldev.thespacedevs.com/2.3.0";
  * @returns {Promise<object>} { count, results }
  */
 async function getLaunches({ limit = 5, fromDate, toDate } = {}) {
+  const cached = await launchQueries.getCachedLaunches({ limit, fromDate, toDate });
+  const hasStaleCachedLaunch = cached.some((launch) =>
+    isCacheStale(launch.cached_at, TTL_MINUTES.LAUNCHES)
+  );
+  if (cached.length > 0 && !hasStaleCachedLaunch) {
+    console.log("\n=== UPCOMING ROCKET LAUNCHES (cache hit) ===");
+    return { count: cached.length, results: cached.map(mapCachedLaunch) };
+  }
+
   const params = new URLSearchParams({
     limit: String(limit),
     mode: "detailed",
@@ -76,7 +80,6 @@ async function getLaunches({ limit = 5, fromDate, toDate } = {}) {
     try {
       // De-dup defensively by name (no idempotency key in schema yet).
       const existing = await launchQueries.findLaunchByName(l.name);
-      if (existing) continue;
 
       const eventData = {
         name: l.name,
@@ -114,14 +117,19 @@ async function getLaunches({ limit = 5, fromDate, toDate } = {}) {
           : null,
       };
 
-      await launchQueries.saveLaunch(eventData, launchData);
+      if (existing) {
+        await launchQueries.refreshLaunchByName(l.name, eventData, launchData);
+      } else {
+        await launchQueries.saveLaunch(eventData, launchData);
+      }
     } catch (saveErr) {
       // Don't fail the whole request if one launch fails to persist.
       console.error(`Failed to save launch "${l.name}":`, saveErr.message);
     }
   }
 
-  return { count: data.count, results: launches };
+  const refreshed = await launchQueries.getCachedLaunches({ limit, fromDate, toDate });
+  return { count: refreshed.length, results: refreshed.map(mapCachedLaunch) };
 }
 
 module.exports = { getLaunches };
@@ -136,4 +144,32 @@ function toEndOfDay(value) {
 
 function isDateOnly(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+}
+
+function mapCachedLaunch(row) {
+  return {
+    name: row.name,
+    status: row.status || row.launch_status,
+    net: row.net,
+    net_precision: row.net_precision || row.date_precision,
+    mission: row.mission_name
+      ? {
+          name: row.mission_name,
+          type: row.mission_type,
+          description: row.mission_description,
+        }
+      : null,
+    pad: row.pad_name
+      ? {
+          name: row.pad_name,
+          location: row.pad_location,
+          latitude: row.pad_lat,
+          longitude: row.pad_long,
+          country: row.pad_country,
+        }
+      : null,
+    provider: row.provider_name,
+    rocket: row.rocket_model,
+    image: row.image_url || null,
+  };
 }

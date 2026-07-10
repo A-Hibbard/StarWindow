@@ -10,6 +10,8 @@ const locationQueries = require("../db/queries/locations");
 const { isCacheStale, TTL_MINUTES } = require("../middleware/cache");
 
 const OPENWEATHER_BASE = "https://api.openweathermap.org/data/2.5";
+const OPENWEATHER_GEO_BASE = "https://api.openweathermap.org/geo/1.0";
+const NOMINATIM_BASE = "https://nominatim.openstreetmap.org";
 
 /**
  * Get current weather for a coordinate.
@@ -86,6 +88,102 @@ async function getWeather({ lat, lon, units = "imperial" }) {
   return weather;
 }
 
+async function getNearestLocation({ lat, lon }) {
+  const lookups = [lookupOpenWeatherLocation, lookupNominatimLocation];
+
+  for (const lookup of lookups) {
+    try {
+      const location = await lookup({ lat, lon });
+      if (location?.label) return location;
+    } catch (error) {
+      console.warn(`${lookup.name} failed:`, error.message);
+    }
+  }
+
+  const err = new Error("No nearby city found for these coordinates.");
+  err.status = 404;
+  throw err;
+}
+
+async function lookupOpenWeatherLocation({ lat, lon }) {
+  if (!process.env.OpenWeatherMap_API_KEY) return null;
+
+  const params = new URLSearchParams({
+    lat,
+    lon,
+    limit: "1",
+    appid: process.env.OpenWeatherMap_API_KEY,
+  });
+
+  const response = await fetch(`${OPENWEATHER_GEO_BASE}/reverse?${params}`);
+  const data = await response.json();
+
+  if (!response.ok) {
+    const err = new Error(data.message || `OpenWeather Geocoding API returned ${response.status}`);
+    err.status = response.status;
+    throw err;
+  }
+
+  const place = Array.isArray(data) ? data[0] : null;
+  if (!place?.name) return null;
+
+  return {
+    name: place.name,
+    state: place.state ?? null,
+    country: place.country ?? null,
+    label: formatLocationLabel(place.name, place.state, place.country),
+    provider: "openweather",
+  };
+}
+
+async function lookupNominatimLocation({ lat, lon }) {
+  const params = new URLSearchParams({
+    format: "jsonv2",
+    lat,
+    lon,
+    zoom: "10",
+    addressdetails: "1",
+    layer: "address",
+  });
+
+  const response = await fetch(`${NOMINATIM_BASE}/reverse?${params}`, {
+    headers: {
+      "Accept-Language": "en",
+      "User-Agent": "StarWindow/1.0 (local development)",
+    },
+  });
+  const data = await response.json();
+
+  if (!response.ok) {
+    const err = new Error(data.error || `Nominatim API returned ${response.status}`);
+    err.status = response.status;
+    throw err;
+  }
+
+  const address = data.address ?? {};
+  const name =
+    address.city ||
+    address.town ||
+    address.village ||
+    address.municipality ||
+    address.county ||
+    data.name;
+
+  if (!name) return null;
+
+  return {
+    name,
+    state: address.state ?? null,
+    country: address.country_code?.toUpperCase() ?? address.country ?? null,
+    label: formatLocationLabel(name, address.state, address.country_code?.toUpperCase() ?? address.country),
+    provider: "nominatim",
+  };
+}
+
+function formatLocationLabel(name, region, country) {
+  return [name, region ?? country].filter(Boolean).join(", ");
+}
+
 // Map a cached DB row back to the frontend shape. Numeric columns arrive from pg
 // as strings, so coerce them. NOTE: the DB has no column for OpenWeather's city
 // name, so on a cache hit `location` falls back to the stored locations.name.
@@ -112,4 +210,4 @@ function num(v) {
   return Number.isNaN(n) ? null : n;
 }
 
-module.exports = { getWeather };
+module.exports = { getWeather, getNearestLocation };

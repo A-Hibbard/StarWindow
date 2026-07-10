@@ -21,7 +21,7 @@ type LocateState = 'locating' | 'ready' | 'denied' | 'unavailable';
 // Placeholder data until a backend feed lands. Bortle: 1 = pristine dark sky.
 const SAMPLE_SPOTS: StargazingSpot[] = [
   { id: 'death-valley', name: 'Death Valley National Park', lat: 36.5054, lng: -117.0794, bortle: 1, description: 'Gold-tier International Dark Sky Park.' },
-  { id: 'cincinnati-observatory', name: 'Cincinnati Observatory', lat: 39.1389, lng: -84.4225, bortle: 1, description: `Cincinnati's historic observatory.` },
+  { id: 'cherry-springs', name: 'Cherry Springs State Park', lat: 41.6501, lng: -77.8164, bortle: 2, description: 'Dark-sky park with strong Milky Way visibility.' },
 ];
 
 export default function MapScreen() {
@@ -127,8 +127,8 @@ export default function MapScreen() {
           <ThemedText type="small" themeColor="textSecondary" style={styles.selected}>
             {locate === 'locating' && 'Finding your location…'}
             {locate === 'ready' && 'Centered on your location.'}
-            {locate === 'denied' && 'Location off — showing the whole map. Enable location to center on you.'}
-            {locate === 'unavailable' && "Couldn't get your location — showing the whole map."}
+            {locate === 'denied' && 'Location is required. Enable location in browser site settings and reload.'}
+            {locate === 'unavailable' && "Couldn't get your location. Check browser and system location settings, then reload."}
           </ThemedText>
         )}
 

@@ -137,38 +137,64 @@ async function getMoonPhase({ latitude, longitude, date } = {}) {
     throw err;
   }
 
-  const location = await locationQueries.findOrCreateLocation({
-    lat: Number(latitude),
-    long: Number(longitude),
-  });
   const phaseDate = toDateKey(when);
 
-  const cached = await bodyQueries.getCachedMoonPhase(location.location_id, phaseDate);
-  if (cached && !isCacheStale(cached.cached_at, TTL_MINUTES.MOON_PHASES)) {
-    console.log("\n=== MOON PHASE (cache hit) ===");
-    return transformMoonPhaseRow(cached);
-  }
+  try {
+    const location = await locationQueries.findOrCreateLocation({
+      lat: Number(latitude),
+      long: Number(longitude),
+    });
 
-  const data = await fetchMoonPhaseFromNasa(when).catch((error) => {
+    const cached = await bodyQueries.getCachedMoonPhase(location.location_id, phaseDate);
+    if (cached && !isCacheStale(cached.cached_at, TTL_MINUTES.MOON_PHASES)) {
+      console.log("\n=== MOON PHASE (cache hit) ===");
+      const cachedMoon = transformMoonPhaseRow(cached);
+      if (cachedMoon.image_url && cachedMoon.phase_angle !== null) return cachedMoon;
+
+      const moon = transformMoonPhaseData(await getMoonPhaseData(when), phaseDate, when);
+      if (!moon.image_url && moon.phase_angle === null) return cachedMoon;
+
+      const saved = await bodyQueries.saveMoonPhase({
+        locationId: location.location_id,
+        phaseDate,
+        phaseString: moon.phase_string || cachedMoon.phase_string,
+        phaseFraction: moon.phase_fraction ?? cachedMoon.phase_fraction,
+        phaseAngle: moon.phase_angle ?? cachedMoon.phase_angle,
+        imageUrl: moon.image_url || cachedMoon.image_url,
+      });
+
+      return {
+        ...transformMoonPhaseRow(saved),
+        age_days: moon.age_days,
+      };
+    }
+
+    const moon = transformMoonPhaseData(await getMoonPhaseData(when), phaseDate, when);
+    const saved = await bodyQueries.saveMoonPhase({
+      locationId: location.location_id,
+      phaseDate,
+      phaseString: moon.phase_string,
+      phaseFraction: moon.phase_fraction,
+      phaseAngle: moon.phase_angle,
+      imageUrl: moon.image_url,
+    });
+
+    return {
+      ...transformMoonPhaseRow(saved),
+      age_days: moon.age_days,
+      image_url: moon.image_url,
+    };
+  } catch (error) {
+    console.warn("Moon phase cache unavailable; returning uncached phase:", error.message);
+    return transformMoonPhaseData(await getMoonPhaseData(when), phaseDate, when);
+  }
+}
+
+async function getMoonPhaseData(when) {
+  return fetchMoonPhaseFromNasa(when).catch((error) => {
     console.warn("NASA moon phase fetch failed; using approximate phase:", error.message);
     return getApproxMoonPhase(when);
   });
-
-  const phasePercent = toNum(data.phase);
-  const age = toNum(data.age);
-  const saved = await bodyQueries.saveMoonPhase({
-    locationId: location.location_id,
-    phaseDate,
-    phaseString: getMoonPhaseName(age),
-    phaseFraction: phasePercent == null ? null : phasePercent / 100,
-    phaseAngle: toNum(data.angle),
-  });
-
-  return {
-    ...transformMoonPhaseRow(saved),
-    age_days: age,
-    image_url: data.image?.url || null,
-  };
 }
 
 async function fetchMoonPhaseFromNasa(when) {
@@ -197,8 +223,7 @@ async function fetchMoonPhaseFromNasa(when) {
 }
 
 function getApproxMoonPhase(when) {
-  const daysSinceKnownNewMoon = (when.getTime() - KNOWN_NEW_MOON_UTC) / 86400000;
-  const age = modulo(daysSinceKnownNewMoon, SYNODIC_MONTH_DAYS);
+  const age = getMoonAge(when);
   const phase = ((1 - Math.cos((2 * Math.PI * age) / SYNODIC_MONTH_DAYS)) / 2) * 100;
 
   return {
@@ -259,6 +284,7 @@ function transformCachedRow(r) {
 
 function transformMoonPhaseRow(row) {
   const phaseFraction = toNum(row.phase_fraction);
+  const phaseAngle = toNum(row.phase_angle);
   return {
     moon_phase_id: row.moon_phase_id,
     location_id: row.location_id,
@@ -266,10 +292,54 @@ function transformMoonPhaseRow(row) {
     phase_string: row.phase_string,
     phase_fraction: phaseFraction,
     phase_percent: phaseFraction == null ? null : Math.round(phaseFraction * 100),
-    phase_angle: toNum(row.phase_angle),
+    phase_angle: phaseAngle,
+    phase_trend: getMoonTrendFromAngle(phaseAngle),
     cached_at: row.cached_at,
-    image_url: null,
+    image_url: row.image_url || null,
   };
+}
+
+function transformMoonPhaseData(data, phaseDate, when) {
+  const phasePercent = toNum(data.phase);
+  const age = toNum(data.age) ?? getMoonAge(when);
+  const phaseFraction = phasePercent == null ? null : phasePercent / 100;
+  const phaseAngle = getPhaseAngle(data, age);
+
+  return {
+    moon_phase_id: null,
+    location_id: null,
+    phase_date: phaseDate,
+    phase_string: getMoonPhaseName(age),
+    phase_fraction: phaseFraction,
+    phase_percent: phasePercent == null ? null : Math.round(phasePercent),
+    phase_angle: phaseAngle,
+    phase_trend: getMoonTrendFromAge(age),
+    cached_at: null,
+    age_days: age,
+    image_url: data.image?.url || null,
+  };
+}
+
+function getPhaseAngle(data, age) {
+  const explicitAngle = toNum(data.angle ?? data.phase_angle ?? data.phaseAngle);
+  if (explicitAngle !== null) return normalizeAngle(explicitAngle);
+  if (age === null) return null;
+  return normalizeAngle((age / SYNODIC_MONTH_DAYS) * 360);
+}
+
+function getMoonAge(when) {
+  const daysSinceKnownNewMoon = (when.getTime() - KNOWN_NEW_MOON_UTC) / 86400000;
+  return modulo(daysSinceKnownNewMoon, SYNODIC_MONTH_DAYS);
+}
+
+function getMoonTrendFromAge(age) {
+  if (age === null) return null;
+  return age < SYNODIC_MONTH_DAYS / 2 ? "Growing" : "Shrinking";
+}
+
+function getMoonTrendFromAngle(angle) {
+  if (angle === null) return null;
+  return normalizeAngle(angle) < 180 ? "Growing" : "Shrinking";
 }
 
 function getMoonPhaseName(age) {
@@ -332,6 +402,10 @@ function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isNaN(n) ? null : n;
+}
+
+function normalizeAngle(value) {
+  return modulo(value, 360);
 }
 
 function modulo(value, divisor) {

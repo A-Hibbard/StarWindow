@@ -28,6 +28,7 @@ import {
   getNextCalendarEvent,
   type CalendarEvent,
 } from '@/utilities/events-api';
+import { fetchNearestLocation } from '@/utilities/location-api';
 import { fetchMoonPhase } from '@/utilities/moon-api';
 
 const STARS = Array.from({ length: 150 }, (_, i) => ({
@@ -46,15 +47,15 @@ const spacing = {
   xxl: 44,
 };
 
-const DEFAULT_COORDS = { latitude: 39.1031, longitude: -84.512 };
-const DEFAULT_LOCATION_LABEL = 'Default: Cincinnati, OH';
+const LOCATION_REQUIRED_LABEL = 'Location required';
+const LOCATION_SETTINGS_MESSAGE = 'Enable browser location access in site settings to load your sky data.';
 
-function formatMoonPercent(value: number | null) {
-  return value === null ? '--' : `${Math.round(value)}%`;
+function formatMoonTrend(value: string | null) {
+  return value ?? 'Loading';
 }
 
-function formatMoonAngle(value: number | null) {
-  return value === null ? '--' : `${Math.round(value)} deg`;
+function formatMoonPercent(value: number | null) {
+  return value === null ? 'Loading' : `${Math.round(value)}%`;
 }
 
 function formatMoonDate(value: string | null) {
@@ -64,10 +65,17 @@ function formatMoonDate(value: string | null) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function formatCoordinates(latitude: number, longitude: number) {
+  return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const today = new Date();
-  const { events, isLoading: isCalendarLoading, error: calendarError } = useCalendarEvents();
+  const [browserCoords, setBrowserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const { events, isLoading: isCalendarLoading, error: calendarError } = useCalendarEvents(
+    browserCoords ?? undefined
+  );
   const currentMonthEvents = getCalendarEventsForMonth(events, today.getFullYear(), today.getMonth());
   const calendarTitle = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const nextCalendarEvent = getNextCalendarEvent(events, today);
@@ -85,47 +93,51 @@ export default function DashboardScreen() {
     : nextCalendarEvent
     ? `Next: ${nextCalendarEvent.title} - ${nextCalendarDate}`
     : 'No calendar events scheduled';
-  const [locationLabel, setLocationLabel] = useState('Locating...');
+  const [locationLabel, setLocationLabel] = useState('Requesting location...');
+  const [locationMessage, setLocationMessage] = useState('Waiting for browser location access.');
   const [moonImageUrl, setMoonImageUrl] = useState<string | null>(null);
   const [moonPhasePercent, setMoonPhasePercent] = useState<number | null>(null);
-  const [moonPhaseAngle, setMoonPhaseAngle] = useState<number | null>(null);
+  const [moonPhaseTrend, setMoonPhaseTrend] = useState<string | null>(null);
   const [moonPhaseDate, setMoonPhaseDate] = useState<string | null>(null);
-  const [moonPhaseName, setMoonPhaseName] = useState('Loading...');
+  const [moonPhaseName, setMoonPhaseName] = useState('Waiting for location...');
 
   useEffect(() => {
     let isMounted = true;
-    let hasMoonData = false;
 
-    async function loadMoonPhase(
-      coords = DEFAULT_COORDS,
-      options: { showError?: boolean } = {}
-    ) {
-      const { showError = true } = options;
+    function clearMoonData(message: string) {
+      setMoonImageUrl(null);
+      setMoonPhasePercent(null);
+      setMoonPhaseTrend(null);
+      setMoonPhaseDate(null);
+      setMoonPhaseName(message);
+    }
+
+    async function loadMoonPhase(coords: { latitude: number; longitude: number }) {
       try {
         const moon = await fetchMoonPhase(coords);
         if (!isMounted) return;
-        hasMoonData = true;
         setMoonImageUrl(moon.image_url ?? null);
         setMoonPhasePercent(moon.phase_percent ?? null);
-        setMoonPhaseAngle(moon.phase_angle ?? null);
+        setMoonPhaseTrend(moon.phase_trend ?? null);
         setMoonPhaseDate(moon.phase_date ?? null);
         setMoonPhaseName(moon.phase_string ?? 'Moon phase unavailable');
       } catch (error) {
         console.log('Moon fetch error:', error);
-        if (isMounted && showError && !hasMoonData) {
+        if (isMounted) {
           setMoonPhaseName('Moon data unavailable');
         }
       }
     }
-
-    void loadMoonPhase(DEFAULT_COORDS);
 
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (!isMounted) return;
         if (status !== 'granted') {
-          setLocationLabel(DEFAULT_LOCATION_LABEL);
+          setBrowserCoords(null);
+          setLocationLabel(LOCATION_REQUIRED_LABEL);
+          setLocationMessage(LOCATION_SETTINGS_MESSAGE);
+          clearMoonData('Location permission required');
           return;
         }
 
@@ -135,24 +147,39 @@ export default function DashboardScreen() {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         };
-        void loadMoonPhase(coords, { showError: false });
+        setBrowserCoords(coords);
+        setLocationLabel(formatCoordinates(coords.latitude, coords.longitude));
+        setLocationMessage('Sky data is based on your current browser location.');
+        void loadMoonPhase(coords);
 
-        const places = await Location.reverseGeocodeAsync({
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-        });
+        try {
+          const nearest = await fetchNearestLocation(coords);
+          if (!isMounted) return;
+          setLocationLabel(nearest.label);
+        } catch (error) {
+          console.log('Nearest city lookup unavailable:', error);
+        }
 
-        if (!isMounted) return;
-        if (places.length > 0) {
+        try {
+          const places = await Location.reverseGeocodeAsync({
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+          });
+
+          if (!isMounted || places.length === 0) return;
           const place = places[0];
-          const city = place.city ?? place.subregion ?? 'Unknown';
+          const city = place.city ?? place.subregion;
           const region = place.region ?? '';
-          setLocationLabel(region ? `${city}, ${region}` : city);
-        } else {
-          setLocationLabel('Unknown location');
+          if (city) setLocationLabel(region ? `${city}, ${region}` : city);
+        } catch (error) {
+          console.log('Reverse geocode unavailable:', error);
         }
       } catch (err) {
-        if (isMounted) setLocationLabel(DEFAULT_LOCATION_LABEL);
+        if (!isMounted) return;
+        setBrowserCoords(null);
+        setLocationLabel(LOCATION_REQUIRED_LABEL);
+        setLocationMessage(LOCATION_SETTINGS_MESSAGE);
+        clearMoonData('Location unavailable');
       }
     })();
 
@@ -201,23 +228,18 @@ export default function DashboardScreen() {
               <Text style={styles.heroEyebrow}>MOON PHASE · LIVE</Text>
               <Text style={styles.heroTitle}>
                 {moonPhaseName}
-                {moonPhasePercent !== null ? ' -\n' : ''}
-                {moonPhasePercent !== null && (
-                  <Text style={styles.heroTitleAccent}>{moonPhasePercent}% illuminated</Text>
-                )}
               </Text>
 
               <View style={styles.heroStats}>
                 <Stat label="ILLUMINATION" value={formatMoonPercent(moonPhasePercent)} />
-                <Stat label="PHASE ANGLE" value={formatMoonAngle(moonPhaseAngle)} />
+                <Stat label="MOON TREND" value={formatMoonTrend(moonPhaseTrend)} />
                 <Stat label="PHASE DATE" value={formatMoonDate(moonPhaseDate)} />
               </View>
 
               <View style={styles.heroNow}>
                 <View style={styles.pulseDot} />
                 <Text style={styles.heroNowText}>
-                  Moon phase data is loaded from the backend for{' '}
-                  <Text style={{ fontWeight: '600' }}>{locationLabel}</Text>.
+                  {locationMessage}
                 </Text>
               </View>
             </View>
@@ -254,10 +276,10 @@ export default function DashboardScreen() {
 
             <PreviewCard
               eyebrow="LIGHT POLLUTION MAP"
-              badge="BORTLE 4"
+              badge="LIVE"
               badgeColor={Palette.accentGreen}
               title="Your Sky Tonight"
-              meta="Suburban/transition zone · best viewing 30mi NE"
+              meta="Requires browser location access"
               thumb={<MapThumb />}
               onPress={() => router.push('/map')}
             />
@@ -294,7 +316,7 @@ export default function DashboardScreen() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <View style={{ marginRight: spacing.lg }}>
+    <View>
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
     </View>
@@ -452,22 +474,24 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     lineHeight: 34,
   },
-  heroTitleAccent: { color: Palette.accentMoon },
   heroStats: {
     flexDirection: 'row',
     marginBottom: spacing.md,
     flexWrap: 'wrap',
     rowGap: spacing.sm,
+    columnGap: spacing.lg,
   },
   statLabel: {
     fontSize: 10,
-    color: Palette.textTertiary,
+    color: Palette.textSecondary,
     marginBottom: 4,
     letterSpacing: 0.5,
+    fontWeight: '700',
   },
   statValue: {
-    fontSize: 14,
-    color: Palette.textPrimary,
+    fontSize: 16,
+    color: Palette.accentMoon,
+    fontWeight: '600',
   },
   heroNow: {
     flexDirection: 'row',

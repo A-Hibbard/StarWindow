@@ -68,12 +68,18 @@ async function findOrCreateLocationByName(name) {
  * @returns {Promise<object>} the locations row (existing or newly inserted).
  */
 async function findOrCreateLocation({ lat, long, name = null, description = null, country = null }) {
+  const normalizedLat = roundCoordinate(lat);
+  const normalizedLong = roundCoordinate(long);
+
   // locations.name is NOT NULL — synthesize a name from coords when none given.
-  if (!name) name = `${lat}, ${long}`;
+  if (!name) name = `${normalizedLat}, ${normalizedLong}`;
 
   const client = await database.connect();
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `${normalizedLat},${normalizedLong}`,
+    ]);
 
     // Match on rounded coordinates so 39.1031 and 39.10310001 collapse to one row.
     const existing = await client.query(
@@ -84,7 +90,7 @@ async function findOrCreateLocation({ lat, long, name = null, description = null
           AND round(long::numeric, 5) = round($2::numeric, 5)
         LIMIT 1
       `,
-      [lat, long]
+      [normalizedLat, normalizedLong]
     );
 
     if (existing.rows.length > 0) {
@@ -96,9 +102,11 @@ async function findOrCreateLocation({ lat, long, name = null, description = null
       `
         INSERT INTO public.locations (name, description, lat, long, country)
         VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT ON CONSTRAINT uq_locations_name_coordinates DO UPDATE SET
+          name = EXCLUDED.name
         RETURNING location_id, name, description, lat, long, country
       `,
-      [name, description, lat, long, country]
+      [name, description, normalizedLat, normalizedLong, country]
     );
 
     await client.query("COMMIT");
@@ -109,6 +117,11 @@ async function findOrCreateLocation({ lat, long, name = null, description = null
   } finally {
     client.release();
   }
+}
+
+function roundCoordinate(value) {
+  const coordinate = Number(value);
+  return Math.round(coordinate * 100000) / 100000;
 }
 
 async function getLocationById(locationId) {

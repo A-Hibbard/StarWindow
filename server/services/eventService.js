@@ -3,6 +3,7 @@
 
 const eventQueries = require("../db/queries/events");
 const locationQueries = require("../db/queries/locations");
+const { isCacheStale, TTL_MINUTES } = require("../middleware/cache");
 
 const LL2_BASE = "https://lldev.thespacedevs.com/2.3.0";
 const DEFAULT_EVENT_TYPE = "Space Event";
@@ -32,11 +33,23 @@ function mapCachedEvent(row) {
  * @returns {Promise<object>} { count, results }
  */
 async function getEvents({ limit, fromDate, toDate } = {}) {
-  if (fromDate && toDate) {
-    await cacheExternalEvents({ fromDate, toDate });
+  let events = await eventQueries.getCachedEvents({ limit, fromDate, toDate });
+  const latestCachedAt = await eventQueries.getLatestCachedAt({ fromDate, toDate });
+  if (events.length > 0 && !isCacheStale(latestCachedAt, TTL_MINUTES.EVENTS)) {
+    console.log("\n=== LL2 EVENTS (cache hit) ===");
+    return { count: events.length, results: events.map(mapCachedEvent) };
   }
 
-  const events = await eventQueries.getCachedEvents({ limit, fromDate, toDate });
+  if (fromDate && toDate) {
+    try {
+      await cacheExternalEvents({ fromDate, toDate });
+      events = await eventQueries.getCachedEvents({ limit, fromDate, toDate });
+    } catch (error) {
+      if (events.length === 0) throw error;
+      console.warn("LL2 events refresh failed; returning stale cache:", error.message);
+    }
+  }
+
   const results = events.map(mapCachedEvent);
   return { count: results.length, results };
 }
