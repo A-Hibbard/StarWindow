@@ -79,6 +79,11 @@ function formatMoonDate(value: string | null) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function normalizeMoonPhaseName(value?: string | null) {
+  if (!value) return null;
+  return value.toLowerCase().includes('last quarter') ? 'Third Quarter' : value;
+}
+
 function formatCoordinates(latitude: number, longitude: number) {
   return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
 }
@@ -434,6 +439,7 @@ export default function DashboardScreen() {
   const [locationMessage, setLocationMessage] = useState('Waiting for browser location access.');
   const [moonImageUrl, setMoonImageUrl] = useState<string | null>(null);
   const [moonPhasePercent, setMoonPhasePercent] = useState<number | null>(null);
+  const [moonPhaseAngle, setMoonPhaseAngle] = useState<number | null>(null);
   const [moonPhaseTrend, setMoonPhaseTrend] = useState<string | null>(null);
   const [moonPhaseDate, setMoonPhaseDate] = useState<string | null>(null);
   const [moonPhaseName, setMoonPhaseName] = useState('Waiting for location...');
@@ -552,6 +558,7 @@ export default function DashboardScreen() {
     function clearMoonData(message: string) {
       setMoonImageUrl(null);
       setMoonPhasePercent(null);
+      setMoonPhaseAngle(null);
       setMoonPhaseTrend(null);
       setMoonPhaseDate(null);
       setMoonPhaseName(message);
@@ -563,9 +570,10 @@ export default function DashboardScreen() {
         if (!isMounted) return;
         setMoonImageUrl(moon.image_url ?? null);
         setMoonPhasePercent(moon.phase_percent ?? null);
+        setMoonPhaseAngle(moon.phase_angle ?? null);
         setMoonPhaseTrend(moon.phase_trend ?? null);
         setMoonPhaseDate(moon.phase_date ?? null);
-        setMoonPhaseName(moon.phase_string ?? 'Moon phase unavailable');
+        setMoonPhaseName(normalizeMoonPhaseName(moon.phase_string) ?? 'Moon phase unavailable');
       } catch (error) {
         console.log('Moon fetch error:', error);
         if (isMounted) {
@@ -878,7 +886,17 @@ export default function DashboardScreen() {
               badgeColor={Palette.accentMoon}
               title={moonPhaseName}
               meta={`${formatMoonPercent(moonPhasePercent)} illuminated | ${formatMoonTrend(moonPhaseTrend)} | ${formatMoonDate(moonPhaseDate)}`}
-              thumb={<MoonThumb imageUrl={moonImageUrl} phaseName={moonPhaseName} />}
+              thumb={
+
+                <MoonThumb
+                  imageUrl={moonImageUrl}
+                  phaseName={moonPhaseName}
+                  phasePercent={moonPhasePercent}
+                  phaseAngle={moonPhaseAngle}
+                  phaseTrend={moonPhaseTrend}
+                />
+
+              }
             />
 
             <PreviewCard
@@ -1061,7 +1079,19 @@ function CalendarThumb({ events }: { events: CalendarEvent[] }) {
   );
 }
 
-function MoonThumb({ imageUrl, phaseName }: { imageUrl: string | null; phaseName: string }) {
+function MoonThumb({
+  imageUrl,
+  phaseName,
+  phasePercent,
+  phaseAngle,
+  phaseTrend,
+}: {
+  imageUrl: string | null;
+  phaseName: string;
+  phasePercent: number | null;
+  phaseAngle: number | null;
+  phaseTrend: string | null;
+}) {
   return (
     <View style={styles.moonThumb}>
       <View style={styles.moonThumbRing} />
@@ -1069,7 +1099,12 @@ function MoonThumb({ imageUrl, phaseName }: { imageUrl: string | null; phaseName
         {imageUrl ? (
           <Image source={{ uri: imageUrl }} style={styles.moonImage} resizeMode="cover" />
         ) : (
-          <View style={styles.moonLoading} />
+          <GeneratedMoonPhase
+            phaseName={phaseName}
+            phasePercent={phasePercent}
+            phaseAngle={phaseAngle}
+            phaseTrend={phaseTrend}
+          />
         )}
       </View>
       <View style={styles.moonThumbLabel}>
@@ -1077,6 +1112,129 @@ function MoonThumb({ imageUrl, phaseName }: { imageUrl: string | null; phaseName
       </View>
     </View>
   );
+}
+
+function GeneratedMoonPhase({
+  phaseName,
+  phasePercent,
+  phaseAngle,
+  phaseTrend,
+}: {
+  phaseName: string;
+  phasePercent: number | null;
+  phaseAngle: number | null;
+  phaseTrend: string | null;
+}) {
+  const illumination = getMoonIlluminationPercent(phasePercent, phaseAngle);
+
+  if (illumination === null) {
+    return <View style={styles.moonLoading} />;
+  }
+
+  const phaseKey = getMoonPhaseKey(phaseName, illumination, phaseAngle, phaseTrend);
+  const shadeCircleStyle = getMoonShadeCircleStyle(phaseKey);
+  const lightCircleStyle = getMoonLightCircleStyle(phaseKey);
+
+  return (
+    <View style={styles.generatedMoon}>
+      {phaseKey === 'full' ? <View style={styles.generatedMoonLightSurface} /> : null}
+      {phaseKey === 'first-quarter' ? (
+        <View style={[styles.generatedMoonHalfLight, styles.generatedMoonRightSide]} />
+      ) : null}
+      {phaseKey === 'third-quarter' ? (
+        <View style={[styles.generatedMoonHalfLight, styles.generatedMoonLeftSide]} />
+      ) : null}
+      {shadeCircleStyle ? (
+        <>
+          <View style={styles.generatedMoonLightSurface} />
+          <View style={[styles.generatedMoonShadeCircle, shadeCircleStyle]} />
+        </>
+      ) : null}
+      {lightCircleStyle ? <View style={[styles.generatedMoonLightCircle, lightCircleStyle]} /> : null}
+      <View style={[styles.generatedMoonCrater, styles.generatedMoonCraterLarge]} />
+      <View style={[styles.generatedMoonCrater, styles.generatedMoonCraterMedium]} />
+      <View style={[styles.generatedMoonCrater, styles.generatedMoonCraterSmall]} />
+      <View style={styles.generatedMoonLimb} />
+    </View>
+  );
+}
+
+function getMoonPhaseKey(
+  phaseName: string,
+  illumination: number,
+  phaseAngle: number | null,
+  phaseTrend: string | null
+) {
+  const name = phaseName.toLowerCase();
+  if (name.includes('new')) return 'new';
+  if (name.includes('full')) return 'full';
+  if (name.includes('first')) return 'first-quarter';
+  if (name.includes('third') || name.includes('last')) return 'third-quarter';
+  if (name.includes('waxing') && (name.includes('crescent') || name.includes('crescen'))) return 'waxing-crescent';
+  if (name.includes('waxing') && name.includes('gibbous')) return 'waxing-gibbous';
+  if (name.includes('waning') && (name.includes('crescent') || name.includes('crescen'))) return 'waning-crescent';
+  if (name.includes('waning') && name.includes('gibbous')) return 'waning-gibbous';
+
+  if (phaseAngle !== null && Number.isFinite(phaseAngle)) {
+    const angle = normalizeMoonAngle(phaseAngle);
+    if (angle < 22.5 || angle >= 337.5) return 'new';
+    if (angle < 67.5) return 'waxing-crescent';
+    if (angle < 112.5) return 'first-quarter';
+    if (angle < 157.5) return 'waxing-gibbous';
+    if (angle < 202.5) return 'full';
+    if (angle < 247.5) return 'waning-gibbous';
+    if (angle < 292.5) return 'third-quarter';
+    return 'waning-crescent';
+  }
+
+  if (illumination <= 8) return 'new';
+  if (illumination >= 92) return 'full';
+
+  const isWaxing = getIsWaxingMoon(phaseTrend, phaseAngle);
+  if (illumination < 42) return isWaxing ? 'waxing-crescent' : 'waning-crescent';
+  if (illumination > 58) return isWaxing ? 'waxing-gibbous' : 'waning-gibbous';
+  return isWaxing ? 'first-quarter' : 'third-quarter';
+}
+
+function getMoonShadeCircleStyle(phaseKey: string) {
+  if (phaseKey === 'waxing-crescent') return styles.generatedMoonWaxingCrescentShade;
+  if (phaseKey === 'waning-crescent') return styles.generatedMoonWaningCrescentShade;
+  return null;
+}
+
+function getMoonLightCircleStyle(phaseKey: string) {
+  if (phaseKey === 'waxing-gibbous') return styles.generatedMoonWaxingGibbousLight;
+  if (phaseKey === 'waning-gibbous') return styles.generatedMoonWaningGibbousLight;
+  return null;
+}
+
+function getMoonIlluminationPercent(phasePercent: number | null, phaseAngle: number | null) {
+  if (phasePercent !== null && Number.isFinite(phasePercent)) {
+    return Math.max(0, Math.min(100, phasePercent));
+  }
+
+  if (phaseAngle !== null && Number.isFinite(phaseAngle)) {
+    const radians = (normalizeMoonAngle(phaseAngle) * Math.PI) / 180;
+    return Math.max(0, Math.min(100, ((1 - Math.cos(radians)) / 2) * 100));
+  }
+
+  return null;
+}
+
+function getIsWaxingMoon(phaseTrend: string | null, phaseAngle: number | null) {
+  const trend = phaseTrend?.toLowerCase() ?? '';
+  if (trend.includes('grow') || trend.includes('wax')) return true;
+  if (trend.includes('shrink') || trend.includes('wan')) return false;
+
+  if (phaseAngle !== null && Number.isFinite(phaseAngle)) {
+    return normalizeMoonAngle(phaseAngle) < 180;
+  }
+
+  return true;
+}
+
+function normalizeMoonAngle(value: number) {
+  return ((value % 360) + 360) % 360;
 }
 
 function MapThumb({
@@ -1228,19 +1386,22 @@ function SpacewalkThumb({
 
   return (
     <View style={styles.spacewalkThumb}>
-      <View style={styles.earthCurve} />
-      <View style={styles.stationBar} />
-      <View style={styles.stationModule} />
-      <View style={styles.evaTether} />
-      <View style={styles.evaHelmet} />
-      <View style={styles.spacewalkReadout}>
-        <Text style={styles.tileReadoutLabel}>{spacewalk?.schedule_status === 'latest' ? 'LATEST EVA' : 'NEXT EVA'}</Text>
-        <Text style={styles.tileReadoutValue} numberOfLines={1}>
-          {isLoading ? 'Checking schedule...' : spacewalk ? formatSpacewalkDate(spacewalk.start) : 'No EVA'}
-        </Text>
-      </View>
-      <View style={styles.spacewalkCrewPill}>
-        <Text style={styles.bodyNameText}>{crewCount > 0 ? `${crewCount} crew` : 'Crew TBD'}</Text>
+      <Image
+        source={require('@/assets/images/spacewalk-astronaut.png')}
+        style={styles.spacewalkImage}
+        resizeMode="cover"
+      />
+      <View style={styles.spacewalkImageScrim} />
+      <View style={styles.spacewalkBottomRow}>
+        <View style={styles.spacewalkCrewPill}>
+          <Text style={styles.bodyNameText}>{crewCount > 0 ? `${crewCount} crew` : 'Crew TBD'}</Text>
+        </View>
+        <View style={styles.spacewalkReadout}>
+          <Text style={styles.spacewalkReadoutLabel}>{spacewalk?.schedule_status === 'latest' ? 'LATEST EVA' : 'NEXT EVA'}</Text>
+          <Text style={styles.spacewalkReadoutValue} numberOfLines={1}>
+            {isLoading ? 'Checking schedule...' : spacewalk ? formatSpacewalkDate(spacewalk.start) : 'No EVA'}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -1472,6 +1633,92 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: Palette.surfaceRaised,
   },
+  generatedMoon: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#29445E',
+  },
+  generatedMoonLightSurface: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#E7ECF2',
+  },
+  generatedMoonHalfLight: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: '50%',
+    backgroundColor: '#E7ECF2',
+  },
+  generatedMoonLeftSide: {
+    left: 0,
+  },
+  generatedMoonRightSide: {
+    right: 0,
+  },
+  generatedMoonShadeCircle: {
+    position: 'absolute',
+    top: 0,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#29445E',
+  },
+  generatedMoonWaxingCrescentShade: {
+    left: -18,
+  },
+  generatedMoonWaningCrescentShade: {
+    right: -18,
+  },
+  generatedMoonLightCircle: {
+    position: 'absolute',
+    top: 0,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#E7ECF2',
+  },
+  generatedMoonWaxingGibbousLight: {
+    right: -14,
+  },
+  generatedMoonWaningGibbousLight: {
+    left: -14,
+  },
+  generatedMoonCrater: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: 'rgba(70, 86, 105, 0.24)',
+    backgroundColor: 'rgba(90, 108, 128, 0.22)',
+  },
+  generatedMoonCraterLarge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    top: 24,
+    left: 52,
+  },
+  generatedMoonCraterMedium: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    top: 54,
+    left: 30,
+  },
+  generatedMoonCraterSmall: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    top: 62,
+    right: 26,
+  },
+  generatedMoonLimb: {
+    ...StyleSheet.absoluteFill,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.26)',
+    borderRadius: 48,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
   issHeroStage: {
     width: '100%',
     height: 220,
@@ -1485,11 +1732,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Palette.bgDeep,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     overflow: 'hidden',
+    paddingTop: 22,
+    paddingBottom: 54,
   },
   moonThumbRing: {
     position: 'absolute',
+    top: 4,
     width: 132,
     height: 132,
     borderRadius: 66,
@@ -1903,72 +2153,53 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.bgDeep,
     overflow: 'hidden',
   },
-  earthCurve: {
-    position: 'absolute',
-    left: -20,
-    right: -20,
-    bottom: -72,
-    height: 120,
-    borderTopWidth: 2,
-    borderColor: Palette.accentGreen,
-    borderTopLeftRadius: 180,
-    borderTopRightRadius: 180,
-    backgroundColor: Palette.surfaceRaised,
-    opacity: 0.75,
+  spacewalkImage: {
+    width: '100%',
+    height: '100%',
   },
-  stationBar: {
-    position: 'absolute',
-    top: 58,
-    left: '23%',
-    width: '54%',
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Palette.textSecondary,
+  spacewalkImageScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(5, 10, 22, 0.28)',
   },
-  stationModule: {
-    position: 'absolute',
-    top: 50,
-    left: '45%',
-    width: 28,
-    height: 24,
-    borderRadius: Radius.sm,
-    backgroundColor: Palette.accentGreen,
-  },
-  evaTether: {
-    position: 'absolute',
-    top: 72,
-    left: '54%',
-    width: 44,
-    height: 1,
-    backgroundColor: Palette.border,
-    transform: [{ rotate: '18deg' }],
-  },
-  evaHelmet: {
-    position: 'absolute',
-    top: 76,
-    left: '68%',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: Palette.textPrimary,
-    borderWidth: 2,
-    borderColor: Palette.accentGreen,
-  },
-  spacewalkReadout: {
-    position: 'absolute',
-    top: 10,
-    left: 12,
-    right: 12,
-    alignItems: 'center',
-  },
-  spacewalkCrewPill: {
+  spacewalkBottomRow: {
     position: 'absolute',
     left: 8,
+    right: 8,
     bottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  spacewalkReadout: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    backgroundColor: Palette.surface + 'CC',
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.sm,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+  },
+  spacewalkReadoutLabel: {
+    color: Palette.textTertiary,
+    fontSize: 8,
+    lineHeight: 10,
+    fontWeight: '700',
+  },
+  spacewalkReadoutValue: {
+    color: Palette.textPrimary,
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  spacewalkCrewPill: {
     backgroundColor: Palette.surface + 'E6',
     borderWidth: 1,
     borderColor: Palette.borderSoft,
     borderRadius: Radius.sm,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
     paddingVertical: 5,
     paddingHorizontal: 8,
   },

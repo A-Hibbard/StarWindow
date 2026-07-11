@@ -81,7 +81,7 @@ function getMoonPhaseName(age: number) {
   if (age < 12.91) return 'Waxing Gibbous';
   if (age < 16.61) return 'Full Moon';
   if (age < 20.3) return 'Waning Gibbous';
-  if (age < 23.99) return 'Last Quarter';
+  if (age < 23.99) return 'Third Quarter';
   if (age < 27.68) return 'Waning Crescent';
   return 'New Moon';
 }
