@@ -7,10 +7,6 @@
 //   event_location(event_location_id PK, event_id FK, location_id FK)
 //   event_bodies(event_body_id PK, event_id FK, body_id FK)
 //
-// The query layer adds events.updated_at if it is missing so event endpoints can
-// make TTL-based cache decisions without a separate migration runner.
-//
-//
 // Each write function takes an OPTIONAL `client` as its last argument. When a
 // caller passes its own pg client (e.g. the launch transaction), these run on
 // that client so everything commits atomically; otherwise they run on the pool.
@@ -36,8 +32,6 @@ module.exports = {
  * @param {string} [opts.toDate] - inclusive YYYY-MM-DD/ISO upper bound
  */
 async function getCachedEvents(opts) {
-  await ensureEventsUpdatedAtColumn();
-
   const { limit, fromDate, toDate } =
     typeof opts === "number" ? { limit: opts } : opts || {};
   const values = [];
@@ -77,8 +71,6 @@ async function getCachedEvents(opts) {
 }
 
 async function getLatestCachedAt(opts = {}) {
-  await ensureEventsUpdatedAtColumn();
-
   const { fromDate, toDate } = opts || {};
   const values = [];
   const where = [];
@@ -121,8 +113,6 @@ async function getLatestCachedAt(opts = {}) {
  * @returns {Promise<object>} the inserted events row.
  */
 async function saveEvent(data) {
-  await ensureEventsUpdatedAtColumn();
-
   const client = await database.connect();
   try {
     await client.query("BEGIN");
@@ -171,8 +161,6 @@ async function saveEvent(data) {
 }
 
 async function findEventByNaturalKey({ name, startTime, typeId }, client) {
-  await ensureEventsUpdatedAtColumn();
-
   const db = client || database;
   if (!name || !startTime) return null;
 
@@ -246,8 +234,6 @@ async function upsertEventType(typeName, client) {
 
 /** Insert one events row; returns the full row (incl. event_id). */
 async function insertEvent(data, client) {
-  await ensureEventsUpdatedAtColumn();
-
   const db = client || database;
   const result = await db.query(
     `
@@ -271,15 +257,6 @@ async function insertEvent(data, client) {
     ]
   );
   return result.rows[0];
-}
-
-let eventsUpdatedAtColumnReady;
-
-function ensureEventsUpdatedAtColumn() {
-  eventsUpdatedAtColumnReady ??= database.query(
-    "ALTER TABLE public.events ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now()"
-  );
-  return eventsUpdatedAtColumnReady;
 }
 
 async function linkEventToLocation(eventId, locationId, client) {

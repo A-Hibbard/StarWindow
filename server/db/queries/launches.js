@@ -14,9 +14,8 @@
 //     mission_id FK, rocket_id FK, provider_id FK, launch_status_id FK, pad_id FK,
 //     image_url)
 //
-// The query layer adds rocket_launch.cached_at if it is missing so launches can
-// use TTL-based cache reads. There is still no LL2 UUID natural key in the
-// schema, so launch refreshes are matched defensively by name.
+// There is still no LL2 UUID natural key in the schema, so launch refreshes are
+// matched defensively by name.
 //
 
 const database = require("../../config/database");
@@ -37,8 +36,6 @@ module.exports = {
  * @param {string} [opts.toDate]
  */
 async function getCachedLaunches(opts = {}) {
-  await ensureLaunchCachedAtColumn();
-
   const { limit = 20, fromDate, toDate } =
     typeof opts === "number" ? { limit: opts } : opts || {};
   const values = [];
@@ -88,8 +85,6 @@ async function getCachedLaunches(opts = {}) {
 
 /** Quick existence check used by the service to avoid duplicate inserts. */
 async function findLaunchByName(name) {
-  await ensureLaunchCachedAtColumn();
-
   const result = await database.query(
     "SELECT launch_id, event_id FROM public.rocket_launch WHERE name = $1 LIMIT 1",
     [name]
@@ -115,8 +110,6 @@ async function findLaunchByName(name) {
  * @returns {Promise<object>} { event_id, launch_id }
  */
 async function saveLaunch(eventData, launchData) {
-  await ensureLaunchCachedAtColumn();
-
   const client = await database.connect();
   try {
     await client.query("BEGIN");
@@ -169,8 +162,6 @@ async function saveLaunch(eventData, launchData) {
 }
 
 async function refreshLaunchByName(name, eventData, launchData) {
-  await ensureLaunchCachedAtColumn();
-
   const existing = await findLaunchByName(name);
   if (!existing) return null;
 
@@ -212,15 +203,6 @@ async function refreshLaunchByName(name, eventData, launchData) {
   );
 
   return existing;
-}
-
-let launchCachedAtColumnReady;
-
-function ensureLaunchCachedAtColumn() {
-  launchCachedAtColumnReady ??= database.query(
-    "ALTER TABLE public.rocket_launch ADD COLUMN IF NOT EXISTS cached_at TIMESTAMPTZ DEFAULT now()"
-  );
-  return launchCachedAtColumnReady;
 }
 
 // ---- lookup upserts (all client-aware, SELECT-then-INSERT) ----------------

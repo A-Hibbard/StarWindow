@@ -30,12 +30,12 @@ export async function fetchVisibleBodies({
   latitude,
   longitude,
   date = new Date(),
-  time = '22:00:00',
+  time,
 }: {
   latitude: number;
   longitude: number;
   date?: Date;
-  time?: string;
+  time?: string | null;
 }) {
   const dateKey = formatDateForApi(date);
   const params = new URLSearchParams({
@@ -43,8 +43,8 @@ export async function fetchVisibleBodies({
     longitude: String(longitude),
     from_date: dateKey,
     to_date: dateKey,
-    time,
   });
+  if (time && time !== '--:--') params.set('time', time);
 
   return sendRequest<null, VisibleBodiesResponse>(`${BODIES_URL}?${params}`);
 }

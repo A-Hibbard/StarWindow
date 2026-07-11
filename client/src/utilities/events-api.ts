@@ -345,7 +345,7 @@ export async function fetchCalendarEvents(input?: number | CalendarEventsQuery):
   const spacewalksUrl = `${EVENTS_URL}/spacewalks?${spacewalksParams}`;
   const bodiesUrl = hasCoordinates
     ? `${ASTRONOMY_BODIES_URL}?latitude=${latitude}&longitude=${longitude}` +
-      `&from_date=${fromDate}&to_date=${toDate}&time=22:00:00`
+      `&from_date=${fromDate}&to_date=${toDate}`
     : null;
 
   const [eventsData, launchesData, spacewalksData, bodiesData] = await Promise.all([

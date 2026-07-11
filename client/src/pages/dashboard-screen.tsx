@@ -63,6 +63,7 @@ const LOCATION_REQUIRED_LABEL = 'Location required';
 const LOCATION_SETTINGS_MESSAGE = 'Enable browser location access in site settings to load your sky data.';
 const DASHBOARD_MAP_FALLBACK_CENTER: [number, number] = [39.157, -84.538];
 const DASHBOARD_MAP_ZOOM = 11;
+const UNKNOWN_OBSERVING_TIME = '--:--';
 
 function formatMoonTrend(value: string | null) {
   return value ?? 'Loading';
@@ -363,7 +364,7 @@ function formatBodiesBadge({
 
 function formatBodiesMeta(bodies: VisibleBody[]) {
   const topBodies = getTopVisibleBodies(bodies);
-  if (topBodies.length === 0) return 'No visible bodies found for tonight at 10 PM.';
+  if (topBodies.length === 0) return `No visible bodies found for tonight at ${UNKNOWN_OBSERVING_TIME}.`;
 
   return topBodies
     .slice(0, 3)
@@ -655,7 +656,7 @@ export default function DashboardScreen() {
       try {
         setIsIssLoading(true);
         setIssError(null);
-        const iss = await fetchIssPasses({ ...coords, count: 1, daysAhead: 5 });
+        const iss = await fetchIssPasses({ ...coords, count: 1, daysAhead: 15 });
         if (!isMounted) return;
         setNextIssPass(iss.passes?.[0] ?? null);
       } catch (error) {
@@ -972,7 +973,7 @@ export default function DashboardScreen() {
               }
               meta={
                 isBodiesLoading
-                  ? 'Checking the sky at 10 PM for your location.'
+                  ? `Checking the sky at ${UNKNOWN_OBSERVING_TIME} for your location.`
                   : bodiesError
                   ? bodiesError
                   : formatBodiesMeta(visibleBodies)
