@@ -95,6 +95,7 @@ export default function CalendarScreen() {
     return {
       fromDate: loadedWindow.fromDate,
       toDate: loadedWindow.toDate,
+      includeVisibleBodies: true,
       ...(browserCoords ?? {}),
     };
   }, [browserCoords, loadedWindow.fromDate, loadedWindow.toDate]);
@@ -227,9 +228,11 @@ export default function CalendarScreen() {
                           <ThemedText type="smallBold" style={styles.eventTitle}>
                             {event.title}
                           </ThemedText>
-                          <ThemedText type="small" themeColor="textSecondary" style={styles.eventTime}>
-                            {event.time}
-                          </ThemedText>
+                          {event.time ? (
+                            <ThemedText type="small" themeColor="textSecondary" style={styles.eventTime}>
+                              {event.time}
+                            </ThemedText>
+                          ) : null}
                           <ThemedText type="small" style={styles.eventDetail}>
                             {event.detail}
                           </ThemedText>

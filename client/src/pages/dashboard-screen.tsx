@@ -465,9 +465,10 @@ export default function DashboardScreen() {
   const displayName = getDisplayName(user);
   const profileMeta = getProfileMeta(user);
   const [browserCoords, setBrowserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
-  const { events, isLoading: isCalendarLoading, error: calendarError } = useCalendarEvents(
-    browserCoords ?? undefined
-  );
+  const { events, isLoading: isCalendarLoading, error: calendarError } = useCalendarEvents({
+    ...(browserCoords ?? {}),
+    includeVisibleBodies: false,
+  });
   const currentMonthEvents = getCalendarEventsForMonth(events, today.getFullYear(), today.getMonth());
   const calendarTitle = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const nextCalendarEvent = getNextCalendarEvent(events, today);

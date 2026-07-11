@@ -94,7 +94,7 @@ export type CalendarEvent = {
   date: number;
   startDate: string;
   title: string;
-  time: string;
+  time: string | null;
   detail: string;
   icon: string;
   type?: string;
@@ -108,6 +108,7 @@ export type CalendarEventsQuery = {
   toDate?: string;
   latitude?: number;
   longitude?: number;
+  includeVisibleBodies?: boolean;
 };
 
 function getEventIcon(type?: string) {
@@ -226,32 +227,57 @@ function toSpacewalkCalendarEvent(spacewalk: RawSpacewalk, index: number): Calen
   };
 }
 
-function toBodyCalendarEvent(body: RawBody, index: number): CalendarEvent | null {
-  if (!body.observed_date || !body.body) return null;
+function toBodyCalendarEvents(bodies: RawBody[]): CalendarEvent[] {
+  const bodiesByDate = new Map<string, RawBody[]>();
 
-  const observed = parseApiDate(body.observed_date);
+  for (const body of bodies) {
+    if (!body.observed_date || !body.body) continue;
+    const group = bodiesByDate.get(body.observed_date) ?? [];
+    group.push(body);
+    bodiesByDate.set(body.observed_date, group);
+  }
+
+  return [...bodiesByDate.entries()]
+    .map(([observedDate, dateBodies]) => toBodyCalendarEvent(observedDate, dateBodies))
+    .filter((event): event is CalendarEvent => event !== null);
+}
+
+function toBodyCalendarEvent(observedDate: string, bodies: RawBody[]): CalendarEvent | null {
+  const observed = parseApiDate(observedDate);
   if (Number.isNaN(observed.getTime())) return null;
 
-  const altitude = formatNumber(body.altitude_degrees, 1);
-  const azimuth = formatNumber(body.azimuth_degrees, 1);
-  const magnitude = formatNumber(body.magnitude, 1);
-  const detailParts = [
-    altitude ? `Altitude ${altitude} deg` : null,
-    azimuth ? `Azimuth ${azimuth} deg` : null,
-    body.constellation ? `Constellation ${body.constellation}` : null,
-    magnitude ? `Magnitude ${magnitude}` : null,
-  ].filter(Boolean);
+  const visibleBodies = bodies.filter((body) => body.body);
+  if (visibleBodies.length === 0) return null;
+
+  const bodyNames = visibleBodies.map((body) => body.body).filter(Boolean).join(', ');
+  const detail = visibleBodies.map(formatBodyEventDetail).join(' | ');
 
   return {
-    id: `body-${body.body}-${body.observed_date}-${index}`,
+    id: `visible-bodies-${observedDate}`,
     date: observed.getDate(),
     startDate: observed.toISOString(),
-    title: `${body.body} visible`,
-    time: formatEventTime(observed),
-    detail: detailParts.join(' | ') || 'Visible above the horizon.',
+    title: visibleBodies.length === 1 ? `${visibleBodies[0].body} visible` : 'Visible bodies tonight',
+    time: null,
+    detail: detail || `${bodyNames} visible above the horizon.`,
     icon: getEventIcon('Visible Body'),
     type: 'Visible Body',
   };
+}
+
+function formatBodyEventDetail(body: RawBody) {
+  const altitude = formatNumber(body.altitude_degrees, 1);
+  const azimuth = formatNumber(body.azimuth_degrees, 1);
+  const magnitude = formatNumber(body.magnitude, 1);
+  const distance = formatNumber(body.distance_from_earth_km, 0);
+  const details = [
+    altitude ? `alt ${altitude} deg` : null,
+    azimuth ? `az ${azimuth} deg` : null,
+    body.constellation ? `constellation ${body.constellation}` : null,
+    magnitude ? `mag ${magnitude}` : null,
+    distance ? `${Number(distance).toLocaleString('en-US')} km` : null,
+  ].filter(Boolean);
+
+  return `${body.body}: ${details.join(', ') || 'visible above the horizon'}`;
 }
 
 function formatNumber(value: string | number | null | undefined, digits: number) {
@@ -316,7 +342,7 @@ function buildCalendarQuery(input?: number | CalendarEventsQuery): Required<Pick
 }
 
 export async function fetchCalendarEvents(input?: number | CalendarEventsQuery): Promise<CalendarEvent[]> {
-  const { limit, fromDate, toDate, latitude, longitude } = buildCalendarQuery(input);
+  const { limit, fromDate, toDate, latitude, longitude, includeVisibleBodies = true } = buildCalendarQuery(input);
   const boundedLimit = typeof limit === 'number' && Number.isFinite(limit) && limit > 0 ? limit : undefined;
   const hasCoordinates =
     typeof latitude === 'number' &&
@@ -343,7 +369,7 @@ export async function fetchCalendarEvents(input?: number | CalendarEventsQuery):
 
   const launchesUrl = `${LAUNCHES_URL}?${launchesParams}`;
   const spacewalksUrl = `${EVENTS_URL}/spacewalks?${spacewalksParams}`;
-  const bodiesUrl = hasCoordinates
+  const bodiesUrl = hasCoordinates && includeVisibleBodies
     ? `${ASTRONOMY_BODIES_URL}?latitude=${latitude}&longitude=${longitude}` +
       `&from_date=${fromDate}&to_date=${toDate}`
     : null;
@@ -365,7 +391,7 @@ export async function fetchCalendarEvents(input?: number | CalendarEventsQuery):
     ...(launchesData?.results ?? []).map(toLaunchCalendarEvent),
     ...(eventsData?.results ?? []).map(toCalendarEvent),
     ...(spacewalksData?.results ?? []).map(toSpacewalkCalendarEvent),
-    ...(bodiesData?.results ?? []).map(toBodyCalendarEvent),
+    ...toBodyCalendarEvents(bodiesData?.results ?? []),
   ].filter((event): event is CalendarEvent => event !== null);
 
   return dedupeCalendarEvents(allEvents);
