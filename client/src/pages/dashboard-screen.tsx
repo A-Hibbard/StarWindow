@@ -297,6 +297,46 @@ function formatWeatherMeta(weather: WeatherResponse | null) {
   return details.join(' | ') || 'Current weather details unavailable.';
 }
 
+function getWeatherImageSource(conditions?: string | null) {
+  const normalized = conditions?.toLowerCase() ?? '';
+
+  if (normalized.includes('thunder')) {
+    return require('@/assets/images/weather-thunderstorm.png');
+  }
+
+  if (normalized.includes('snow') || normalized.includes('sleet')) {
+    return require('@/assets/images/weather-snow.png');
+  }
+
+  if (
+    normalized.includes('rain') ||
+    normalized.includes('drizzle') ||
+    normalized.includes('shower')
+  ) {
+    return require('@/assets/images/weather-rain.png');
+  }
+
+  if (
+    normalized.includes('mist') ||
+    normalized.includes('fog') ||
+    normalized.includes('haze') ||
+    normalized.includes('smoke') ||
+    normalized.includes('dust') ||
+    normalized.includes('sand') ||
+    normalized.includes('ash') ||
+    normalized.includes('squall') ||
+    normalized.includes('tornado')
+  ) {
+    return require('@/assets/images/weather-fog.png');
+  }
+
+  if (normalized.includes('clear')) {
+    return require('@/assets/images/weather-clear.png');
+  }
+
+  return require('@/assets/images/weather-clouds.png');
+}
+
 function getTopVisibleBodies(bodies: VisibleBody[]) {
   return [...bodies]
     .filter((body) => body.body)
@@ -1313,12 +1353,10 @@ function IssThumb({
   const duration = formatIssDuration(pass?.visible_duration_sec ?? pass?.duration_sec);
 
   return (
-    <View style={[styles.issThumb, variant === 'hero' && styles.issHeroThumb]}>
+      <View style={[styles.issThumb, variant === 'hero' && styles.issHeroThumb]}>
       <View style={styles.issHorizon} />
       <View style={[styles.issOrbitArc, variant === 'hero' && styles.issHeroOrbitArc]} />
-      <View style={[styles.issNode, styles.issRiseNode, variant === 'hero' && styles.issHeroRiseNode]} />
       <View style={[styles.issNode, styles.issPeakNode, variant === 'hero' && styles.issHeroPeakNode]} />
-      <View style={[styles.issNode, styles.issSetNode, variant === 'hero' && styles.issHeroSetNode]} />
       <View style={[styles.issStation, variant === 'hero' && styles.issHeroStation]}>
         <Image
           source={require('@/assets/images/iss.png')}
@@ -1458,12 +1496,16 @@ function NewsThumb({ article, isLoading }: { article: NewsArticle | null; isLoad
 function WeatherThumb({ weather, isLoading }: { weather: WeatherResponse | null; isLoading: boolean }) {
   const clouds = Math.max(0, Math.min(100, weather?.clouds_pct ?? 0));
   const humidity = Math.max(0, Math.min(100, weather?.humidity ?? 0));
+  const weatherImage = getWeatherImageSource(weather?.conditions);
 
   return (
     <View style={styles.weatherThumb}>
-      <View style={styles.weatherSun} />
-      <View style={[styles.weatherCloud, styles.weatherCloudBack]} />
-      <View style={styles.weatherCloud} />
+      <Image
+        source={weatherImage}
+        style={styles.weatherImage}
+        resizeMode="cover"
+      />
+      <View style={styles.weatherImageScrim} />
       <View style={styles.weatherReadout}>
         <Text style={styles.tileReadoutLabel}>CURRENT CONDITIONS</Text>
         <Text style={styles.weatherTempValue}>
@@ -1980,29 +2022,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Palette.bgDeep,
   },
-  issRiseNode: {
-    left: '16%',
-    bottom: 39,
-  },
-  issHeroRiseNode: {
-    left: '14%',
-    bottom: 45,
-  },
   issPeakNode: {
     left: '50%',
     marginLeft: -3.5,
     top: 38,
   },
   issHeroPeakNode: {
-    top: 45,
-  },
-  issSetNode: {
-    right: '16%',
-    bottom: 39,
-  },
-  issHeroSetNode: {
-    right: '14%',
-    bottom: 45,
+    top: 49,
   },
   issStation: {
     position: 'absolute',
@@ -2300,34 +2326,13 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.bgDeep,
     overflow: 'hidden',
   },
-  weatherSun: {
-    position: 'absolute',
-    top: 34,
-    right: 38,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: Palette.accentMoon,
-    opacity: 0.85,
-    shadowColor: Palette.accentMoon,
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
+  weatherImage: {
+    width: '100%',
+    height: '100%',
   },
-  weatherCloud: {
-    position: 'absolute',
-    top: 56,
-    left: 48,
-    width: 96,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Palette.textSecondary,
-    opacity: 0.9,
-  },
-  weatherCloudBack: {
-    top: 48,
-    left: 30,
-    width: 76,
-    opacity: 0.55,
+  weatherImageScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(5, 10, 22, 0.3)',
   },
   weatherReadout: {
     position: 'absolute',
