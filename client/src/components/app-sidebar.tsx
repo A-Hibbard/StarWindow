@@ -10,6 +10,7 @@ const navItems = [
   { label: 'Calendar', href: '/calendar' },
   { label: 'Map', href: '/map' },
   { label: 'Launches', href: '/explore' },
+  { label: 'Profile', href: '/profile' },
 ] as const;
 
 export function AppSidebar() {

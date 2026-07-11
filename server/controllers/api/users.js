@@ -7,7 +7,9 @@ module.exports = {
   create,
   login,
   me,
+  updateMe,
   checkToken,
+  getEventTypes,
   updateEventTypes,
 };
 
@@ -50,9 +52,29 @@ async function me(req, res) {
   }
 }
 
+async function updateMe(req, res) {
+  try {
+    const user = await User.updateProfile(req.user.user_id, req.body);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json(createJWT(user));
+  } catch (err) {
+    console.error("PUT /api/users/me failed:", err);
+    res.status(400).json({ error: err.message, code: err.code });
+  }
+}
+
 function checkToken(req, res) {
   console.log('req.user', req.user);
   res.json(req.exp);
+}
+
+async function getEventTypes(req, res) {
+  try {
+    const eventTypeIds = await EventType.getForUser(req.user.user_id);
+    res.json({ eventTypeIds });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 }
 
 async function updateEventTypes(req, res) {

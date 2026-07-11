@@ -139,10 +139,10 @@ function formatLaunchBadge(launch: UpcomingLaunch | null) {
   const days = Math.floor(totalMinutes / 1440);
   const hours = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
+  const clock = `${hours}:${String(minutes).padStart(2, '0')}`;
 
-  if (days > 0) return `T-${days}D ${hours}H`;
-  if (hours > 0) return `T-${hours}H ${minutes}M`;
-  return `T-${minutes}M`;
+  if (days > 0) return `${days}D ${clock}`;
+  return clock;
 }
 
 function formatLaunchDate(value?: string) {
@@ -657,7 +657,7 @@ export default function DashboardScreen() {
       try {
         setIsIssLoading(true);
         setIssError(null);
-        const iss = await fetchIssPasses({ ...coords, count: 1, daysAhead: 15 });
+        const iss = await fetchIssPasses({ ...coords, count: 1, daysAhead: 14 });
         if (!isMounted) return;
         setNextIssPass(iss.passes?.[0] ?? null);
       } catch (error) {
@@ -837,7 +837,7 @@ export default function DashboardScreen() {
 {/*
           <SectionLabel text="ACCOUNT" /> */}
 
-          <Pressable style={styles.profileCard} onPress={() => {}}>
+          <Pressable style={styles.profileCard} onPress={() => router.push('/profile')}>
             <View style={styles.profileRing}>
               <View style={styles.profileAvatar} />
             </View>
@@ -916,7 +916,7 @@ export default function DashboardScreen() {
             <PreviewCard
               eyebrow="LAUNCHES"
               badge={isLaunchLoading ? 'LOADING' : launchError ? 'UNAVAILABLE' : formatLaunchBadge(nextLaunch)}
-              badgeColor={Palette.accentRed}
+              badgeColor={Palette.accentMoon}
               title={
                 isLaunchLoading
                   ? 'Loading next launch...'
@@ -1040,7 +1040,7 @@ export default function DashboardScreen() {
                 error: weatherError,
                 hasLocation: Boolean(browserCoords),
               })}
-              badgeColor={Palette.accentRed}
+              badgeColor={Palette.accentBlue}
               title={
                 isWeatherLoading
                   ? 'Loading weather...'

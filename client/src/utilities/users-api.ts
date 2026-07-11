@@ -20,6 +20,14 @@ export function getCurrentUser(): Promise<AuthUser> {
   return sendRequest(`${BASE_URL}/me`);
 }
 
+export function updateCurrentUser(userData: Pick<AuthUser, 'f_name' | 'l_name' | 'email'>): Promise<string> {
+  return sendRequest(`${BASE_URL}/me`, 'PUT', userData);
+}
+
+export function getUserEventTypes(): Promise<{ eventTypeIds: number[] }> {
+  return sendRequest(`${BASE_URL}/event-types`);
+}
+
 export function saveEventTypes(eventTypeIds: number[]): Promise<{ eventTypeIds: number[] }> {
   return sendRequest(`${BASE_URL}/event-types`, 'PUT', { eventTypeIds });
 }

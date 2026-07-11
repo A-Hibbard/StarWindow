@@ -23,7 +23,11 @@ export function StarMap(props: StarMapProps) {
     return () => sub.remove();
   }, []);
 
-  const height = props.preview ? '100%' : Math.min(Math.max(screen.height * 0.6, 320), 720);
+  const height = props.preview
+    ? '100%'
+    : props.immersive
+    ? Math.max(screen.height - 88, 360)
+    : Math.min(Math.max(screen.height * 0.6, 320), 720);
 
   return (
     <View style={[styles.frame, props.preview && styles.previewFrame, { height }, props.style]}>

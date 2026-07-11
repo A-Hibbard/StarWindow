@@ -36,6 +36,18 @@
   object-fit: contain;
 }
 
+.launchPopupLink {
+  color: #00d4ff;
+  display: inline-block;
+  font-weight: 700;
+  margin-top: 8px;
+  text-decoration: none;
+}
+.launchPopupLink:hover {
+  color: #ffffff;
+  text-decoration: none;
+}
+
 /* Map backdrop while tiles load — matches the deep-space background. */
 :global(.leaflet-container) {
   background: #000008;

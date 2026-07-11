@@ -2,6 +2,7 @@ const database = require('../config/database');
 
 module.exports = {
   getAll,
+  getForUser,
   replaceForUser,
 };
 
@@ -14,6 +15,20 @@ async function getAll() {
   `);
 
   return result.rows;
+}
+
+async function getForUser(userId) {
+  const result = await database.query(
+    `
+      SELECT event_type_id
+      FROM public.user_event_types
+      WHERE user_id = $1
+      ORDER BY event_type_id
+    `,
+    [userId]
+  );
+
+  return result.rows.map((row) => Number(row.event_type_id));
 }
 
 async function replaceForUser(userId, eventTypeIds) {

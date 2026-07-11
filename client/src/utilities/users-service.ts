@@ -49,6 +49,16 @@ export function getCurrentUser(): Promise<AuthUser> {
   return usersAPI.getCurrentUser();
 }
 
+export async function updateCurrentUser(userData: Pick<AuthUser, 'f_name' | 'l_name' | 'email'>): Promise<AuthUser | null> {
+  const token = await usersAPI.updateCurrentUser(userData);
+  setToken(token);
+  return getUser();
+}
+
+export function getUserEventTypes() {
+  return usersAPI.getUserEventTypes();
+}
+
 export function getToken(): string | null {
   const token = readToken();
   if (!token) return null;

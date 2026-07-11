@@ -63,5 +63,7 @@ export interface StarMapProps {
   showLightPollution?: boolean;
   /** Render a compact, non-interactive map for dashboard previews. */
   preview?: boolean;
+  /** Make the full web map occupy most of the viewport. */
+  immersive?: boolean;
   style?: StyleProp<ViewStyle>;
 }
