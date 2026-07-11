@@ -10,11 +10,17 @@ import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchLaunches } from '@/lib/astronomy';
+import { fetchBestSpot, type BestSpot } from '@/lib/map-api';
 import * as usersService from '@/utilities/users-service';
 
 // Zoom we drop to once we know the user's location — close enough to see their
 // city while the (upscaled) light-pollution overlay stays readable.
 const CITY_ZOOM = 11;
+
+// Default search radius (miles) for the best-nearby-spot query.
+const DEFAULT_RADIUS = 25;
+// Wait this long after the last slider move before re-querying.
+const RADIUS_DEBOUNCE_MS = 300;
 
 type LocateState = 'locating' | 'ready' | 'denied' | 'unavailable';
 
@@ -32,6 +38,9 @@ export default function MapScreen() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locate, setLocate] = useState<LocateState>('locating');
   const [launches, setLaunches] = useState<RocketLaunch[]>([]);
+  const [radiusMiles, setRadiusMiles] = useState(DEFAULT_RADIUS);
+  const [userScore, setUserScore] = useState<number | null>(null);
+  const [bestSpot, setBestSpot] = useState<BestSpot | null>(null);
 
   //check if logged in
   useEffect(() => {
@@ -77,6 +86,34 @@ export default function MapScreen() {
     };
   }, []);
 
+  // Re-query the best nearby spot whenever the user's location or the radius
+  // changes. Debounced so dragging the slider fires one request ~300ms after
+  // the user stops, not on every intermediate value; the previous in-flight
+  // request is aborted.
+  useEffect(() => {
+    if (!userLocation) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetchBestSpot(
+          { lat: userLocation.lat, lon: userLocation.lng, radiusMiles },
+          controller.signal
+        );
+        setUserScore(res.user_score);
+        setBestSpot(res.best_spot);
+      } catch (e) {
+        if ((e as Error)?.name !== 'AbortError') {
+          console.warn('Failed to load best spot:', e);
+        }
+      }
+    }, RADIUS_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [userLocation, radiusMiles]);
+
   const insets = {
     ...safeAreaInsets,
     bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
@@ -116,6 +153,10 @@ export default function MapScreen() {
           userLocation={userLocation}
           onSelectSpot={setSelected}
           onLaunchesEnable={loadLaunches}
+          userScore={userScore}
+          bestSpot={bestSpot}
+          radiusMiles={radiusMiles}
+          onRadiusChange={setRadiusMiles}
         />
 
         {selected ? (

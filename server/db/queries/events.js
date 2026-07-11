@@ -24,6 +24,8 @@ const database = require("../../config/database");
 
 module.exports = {
   getCachedEvents,
+  getUpcomingNonLaunchEvents,
+  findEventByNameAndTime,
   saveEvent,
   upsertEventType,
   insertEvent,
@@ -50,6 +52,70 @@ async function getCachedEvents(limit = 20) {
     [limit]
   );
   return result.rows;
+}
+
+/**
+ * Return UPCOMING space events that are NOT rocket launches, soonest first.
+ *
+ * A launch is stored as an events row plus a rocket_launch row pointing at it
+ * (rocket_launch.event_id is a UNIQUE FK), so those base event rows must be
+ * excluded here — they're returned separately via launches.getUpcomingLaunches()
+ * with their launch-specific fields. The NOT EXISTS clause does that filtering.
+ *
+ * The location name is pulled with a correlated subquery (rather than a JOIN on
+ * event_location) so an event linked to more than one location still yields
+ * exactly one row instead of multiplying.
+ *
+ * @param {number} [limit=200]
+ */
+async function getUpcomingNonLaunchEvents(limit = 200) {
+  const result = await database.query(
+    `
+      SELECT * FROM (
+        SELECT DISTINCT ON (e.name, e.start_time)
+          e.event_id, e.name, e.start_time, e.date_precision, e.description,
+          e.image_url, e.webcast_live, e.video_url, et.event_type,
+          (
+            SELECT loc.name
+            FROM public.event_location el
+            JOIN public.locations loc ON loc.location_id = el.location_id
+            WHERE el.event_id = e.event_id
+            ORDER BY el.event_location_id ASC
+            LIMIT 1
+          ) AS location_name
+        FROM public.events e
+        LEFT JOIN public.event_types et ON et.event_type_id = e.type_id
+        WHERE e.start_time >= now()
+          AND NOT EXISTS (
+            SELECT 1 FROM public.rocket_launch rl WHERE rl.event_id = e.event_id
+          )
+        -- DISTINCT ON keeps ONE row per (name, start_time), collapsing duplicate
+        -- rows the event ingest may have inserted; keep the lowest event_id.
+        ORDER BY e.name, e.start_time, e.event_id
+      ) uniq
+      ORDER BY uniq.start_time ASC
+      LIMIT $1
+    `,
+    [limit]
+  );
+  return result.rows;
+}
+
+/**
+ * Existence check used by the event service to avoid inserting duplicate events.
+ * LL2 /events/ has no stable id stored here, so (name, start_time) is the natural
+ * key — the same eclipse/flyby fetched repeatedly shares both. Mirrors the launch
+ * service's findLaunchByName() dedup guard.
+ * @param {string} name
+ * @param {string} startTime
+ * @returns {Promise<object|null>} the existing row's event_id, or null.
+ */
+async function findEventByNameAndTime(name, startTime) {
+  const result = await database.query(
+    "SELECT event_id FROM public.events WHERE name = $1 AND start_time = $2 LIMIT 1",
+    [name, startTime]
+  );
+  return result.rows[0] || null;
 }
 
 /**

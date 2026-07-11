@@ -164,9 +164,41 @@ function toNum(v) {
   return Number.isNaN(n) ? null : n;
 }
 
+// NASA's "Dial-a-Moon" — a rendered Moon image plus phase/age for a given instant.
+// Used by the dashboard hero. Fetched server-side (here) instead of from the
+// browser so it isn't blocked by CORS (the browser call threw "Failed to fetch").
+const DIALAMOON_BASE = "https://svs.gsfc.nasa.gov/api/dialamoon";
+
+/**
+ * Proxy NASA's Dial-a-Moon for the given instant and return just the fields the
+ * dashboard needs. No DB caching — dialamoon is keyless and cheap, and the
+ * moon_phases table models AstronomyAPI's phase data, not these renders.
+ * @param {string} [datetime] - "YYYY-MM-DDTHH:mm"; defaults to now (UTC).
+ * @returns {Promise<{datetime:string, image_url:string|null, phase:number|null, age:number|null}>}
+ */
+async function getMoonView(datetime) {
+  // dialamoon wants minute precision: YYYY-MM-DDTHH:mm
+  const iso = (datetime || new Date().toISOString()).slice(0, 16);
+
+  const response = await fetch(`${DIALAMOON_BASE}/${iso}`);
+  if (!response.ok) {
+    const err = new Error(`Dial-a-Moon returned ${response.status}`);
+    err.status = response.status;
+    throw err;
+  }
+
+  const data = await response.json();
+  return {
+    datetime: iso,
+    image_url: data.image?.url || null,
+    phase: data.phase ?? null, // percent illuminated
+    age: data.age ?? null, // days since new moon
+  };
+}
+
 // TODO (FEATURE GAP): moon phases. The schema has moon_phases and db/queries/bodies.js
 // exposes getCachedMoonPhase/saveMoonPhase, but the original route never fetched
 // them. AstronomyAPI serves moon phase from POST /studio/moon-phase (a separate
 // endpoint). Add a getMoonPhase() here when you want to populate that table.
 
-module.exports = { getBodyPositions };
+module.exports = { getBodyPositions, getMoonView };

@@ -32,4 +32,18 @@ router.get("/bodies", async (req, res) => {
   }
 });
 
+// GET /api/astronomy/moon?datetime=YYYY-MM-DDTHH:mm
+// Server-side proxy of NASA's Dial-a-Moon (rendered Moon image + phase + age),
+// so the dashboard doesn't call NASA directly and hit CORS.
+router.get("/moon", async (req, res) => {
+  const { datetime } = req.query;
+  try {
+    const result = await astronomyService.getMoonView(datetime);
+    res.json(result);
+  } catch (error) {
+    const status = error.status || 500;
+    res.status(status).json({ error: error.message, status });
+  }
+});
+
 module.exports = router;

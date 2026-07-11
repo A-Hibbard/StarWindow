@@ -22,6 +22,7 @@ import * as Location from 'expo-location';
 import { Palette, Radius } from '@/constants/tokens';
 import { ShootingStar } from '@/components/shooting-star';
 import { MonthGrid } from '@/components/calendar/month-grid';
+import { fetchMoonView } from '@/lib/astronomy';
 
 const STARS = Array.from({ length: 150 }, (_, i) => ({
   top: (i * 23.7) % 100,
@@ -63,12 +64,11 @@ export default function DashboardScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const now = new Date();
-        const iso = now.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
-        const res = await fetch(`https://svs.gsfc.nasa.gov/api/dialamoon/${iso}`);
-        const data = await res.json();
+        // Proxied through our backend (GET /api/astronomy/moon) so the browser
+        // isn't blocked by NASA's CORS — see server/services/astronomyService.js.
+        const data = await fetchMoonView();
 
-        setMoonImageUrl(data.image?.url ?? null);
+        setMoonImageUrl(data.image_url ?? null);
         setMoonPhasePercent(Math.round(data.phase ?? 0));
         setMoonPhaseName(getMoonPhaseName(data.age ?? 0));
       } catch (e) {

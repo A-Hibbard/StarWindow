@@ -7,6 +7,7 @@
 // using TTL_MINUTES.EVENTS exactly like the weather/iss services do.
 
 const eventQueries = require("../db/queries/events");
+const launchQueries = require("../db/queries/launches");
 const locationQueries = require("../db/queries/locations");
 
 const LL2_BASE = "https://lldev.thespacedevs.com/2.3.0";
@@ -52,6 +53,12 @@ async function getEvents({ limit = 5 } = {}) {
   // Persist each event: map -> events columns, upsert type, link location.
   for (const e of events) {
     try {
+      // De-dup defensively by (name, start_time) — no idempotency key in schema
+      // yet, so without this every fetch re-inserts the same events (that's what
+      // filled the table with 9x eclipse rows). Mirrors the launch service guard.
+      const existing = await eventQueries.findEventByNameAndTime(e.name, e.date);
+      if (existing) continue;
+
       // LL2 events give location as a free-text string with no coords.
       const location = e.location ? await locationQueries.findOrCreateLocationByName(e.location) : null;
 
@@ -124,4 +131,79 @@ async function getSpacewalks({ limit = 5 } = {}) {
   return { count: data.count, results: spacewalks };
 }
 
-module.exports = { getEvents, getSpacewalks };
+/**
+ * Build the unified upcoming-events list from CACHED DB data only (no external
+ * API calls). Merges space events and rocket launches into one array of a single
+ * normalized shape, sorted chronologically (soonest first).
+ *
+ * Normalized item:
+ *   { id, category: "event"|"launch", name, type, date, date_precision,
+ *     description, image_url, location }
+ *
+ * @returns {Promise<Array<object>>}
+ */
+async function getUpcomingList() {
+  const [events, launches] = await Promise.all([
+    eventQueries.getUpcomingNonLaunchEvents(),
+    launchQueries.getUpcomingLaunches(),
+  ]);
+
+  const normalizedEvents = events.map((e) => ({
+    id: e.event_id,
+    // event_id is the FK target for saving (user_events.event_id). For plain
+    // events it equals id; kept as its own field so the client never has to know
+    // that launches differ (see below).
+    event_id: e.event_id,
+    category: "event",
+    name: e.name,
+    type: e.event_type || "Event",
+    date: e.start_time,
+    date_precision: e.date_precision,
+    description: e.description,
+    image_url: e.image_url,
+    location: e.location_name || null,
+    latitude: null, // LL2 /events/ gives a free-text location with no coords
+    longitude: null,
+    webcast_live: e.webcast_live ?? false,
+    video_url: e.video_url || null,
+    launch_details: null,
+  }));
+
+  const normalizedLaunches = launches.map((l) => ({
+    // Display id stays the launch_id (unique per launch), but event_id is the
+    // rocket_launch's underlying events row — THAT is what user_events references.
+    id: l.launch_id,
+    event_id: l.event_id,
+    category: "launch",
+    name: l.name,
+    type: "Rocket Launch",
+    date: l.net,
+    date_precision: l.date_precision || l.net_precision,
+    description: l.mission_description,
+    image_url: l.image_url,
+    // Prefer the pad's location; fall back to the pad name if it has no location row.
+    location: l.pad_location || l.pad_name || null,
+    latitude: l.pad_lat != null ? Number(l.pad_lat) : null,
+    longitude: l.pad_lon != null ? Number(l.pad_lon) : null,
+    webcast_live: l.webcast_live ?? false,
+    video_url: l.video_url || null,
+    launch_details: {
+      rocket_model: l.rocket_model || null,
+      provider: l.provider_name || null,
+      mission_name: l.mission_name || null,
+      mission_type: l.mission_type || null,
+      pad_name: l.pad_name || null,
+      pad_location: l.pad_location || null,
+      status: l.launch_status || l.status || null,
+    },
+  }));
+
+  // Merge, then sort chronologically. Items with a missing/invalid date sort last.
+  return [...normalizedEvents, ...normalizedLaunches].sort((a, b) => {
+    const ta = a.date ? new Date(a.date).getTime() : Infinity;
+    const tb = b.date ? new Date(b.date).getTime() : Infinity;
+    return ta - tb;
+  });
+}
+
+module.exports = { getEvents, getSpacewalks, getUpcomingList };
