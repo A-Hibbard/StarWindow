@@ -88,6 +88,14 @@ function formatCoordinates(latitude: number, longitude: number) {
   return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
 }
 
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return count === 1 ? singular : plural;
+}
+
+function formatCount(count: number, singular: string, plural?: string) {
+  return `${count} ${pluralize(count, singular, plural)}`;
+}
+
 function getDisplayName(user: usersService.AuthUser | null) {
   const fullName = [user?.f_name, user?.l_name].filter(Boolean).join(' ').trim();
   return fullName || user?.email || 'Guest';
@@ -192,7 +200,8 @@ function formatIssClock(value?: string | null) {
 function formatIssDuration(seconds?: number | null) {
   if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return null;
   if (seconds < 60) return `${Math.round(seconds)} sec`;
-  return `${Math.round(seconds / 60)} min`;
+  const minutes = Math.round(seconds / 60);
+  return `${minutes} min`;
 }
 
 function formatIssBadge({
@@ -427,7 +436,11 @@ export default function DashboardScreen() {
         day: 'numeric',
       })
     : null;
-  const calendarBadge = isCalendarLoading ? 'LOADING' : calendarError ? 'UNAVAILABLE' : `${currentMonthEvents.length} EVENTS`;
+  const calendarBadge = isCalendarLoading
+    ? 'LOADING'
+    : calendarError
+    ? 'UNAVAILABLE'
+    : formatCount(currentMonthEvents.length, 'EVENT', 'EVENTS');
   const calendarMeta = isCalendarLoading
     ? 'Loading upcoming events...'
     : calendarError
@@ -1343,33 +1356,43 @@ function IssThumb({
 
 function BodiesThumb({ bodies, isLoading }: { bodies: VisibleBody[]; isLoading: boolean }) {
   const topBodies = getTopVisibleBodies(bodies);
+  const primaryBody = topBodies[0] ?? null;
 
   return (
     <View style={styles.bodiesThumb}>
-      <View style={styles.bodiesSkyArc} />
-      <View style={styles.bodiesHorizon} />
-      {topBodies.slice(0, 4).map((body, index) => (
-        <View
-          key={`${body.body}-${index}`}
-          style={[
-            styles.bodyDot,
-            index === 0 && styles.bodyDotPrimary,
-            { left: `${18 + index * 20}%` as any, top: `${58 - index * 9}%` as any },
-          ]}
-        />
-      ))}
-      <View style={styles.bodiesReadout}>
-        <Text style={styles.tileReadoutLabel}>VISIBLE TONIGHT</Text>
-        <Text style={styles.tileReadoutValue}>
-          {isLoading ? 'Checking sky...' : `${bodies.length} bodies`}
-        </Text>
-      </View>
-      <View style={styles.bodyNameRow}>
-        {topBodies.slice(0, 3).map((body, index) => (
-          <View key={`${body.body}-pill-${index}`} style={styles.bodyNamePill}>
-            <Text style={styles.bodyNameText} numberOfLines={1}>{body.body}</Text>
-          </View>
-        ))}
+      {primaryBody?.image_url ? (
+        <>
+          <Image source={{ uri: primaryBody.image_url }} style={styles.bodiesImage} resizeMode="contain" />
+          <View style={styles.bodiesImageScrim} />
+        </>
+      ) : (
+        <>
+          <View style={styles.bodiesSkyArc} />
+          <View style={styles.bodiesHorizon} />
+          {topBodies.slice(0, 4).map((body, index) => (
+            <View
+              key={`${body.body}-${index}`}
+              style={[
+                styles.bodyDot,
+                index === 0 && styles.bodyDotPrimary,
+                { left: `${18 + index * 20}%` as any, top: `${58 - index * 9}%` as any },
+              ]}
+            />
+          ))}
+        </>
+      )}
+      <View style={styles.bodiesBottomRow}>
+        <View style={styles.bodyNamePill}>
+          <Text style={styles.bodyNameText} numberOfLines={1}>
+            {primaryBody?.body ?? (isLoading ? 'Loading...' : 'No bodies')}
+          </Text>
+        </View>
+        <View style={styles.bodiesReadout}>
+          <Text style={styles.bodiesReadoutLabel}>VISIBLE TONIGHT</Text>
+          <Text style={styles.bodiesReadoutValue}>
+            {isLoading ? 'Checking sky...' : formatCount(bodies.length, 'body', 'bodies')}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -1394,7 +1417,9 @@ function SpacewalkThumb({
       <View style={styles.spacewalkImageScrim} />
       <View style={styles.spacewalkBottomRow}>
         <View style={styles.spacewalkCrewPill}>
-          <Text style={styles.bodyNameText}>{crewCount > 0 ? `${crewCount} crew` : 'Crew TBD'}</Text>
+          <Text style={styles.bodyNameText}>
+            {crewCount > 0 ? formatCount(crewCount, 'crew member') : 'Crew TBD'}
+          </Text>
         </View>
         <View style={styles.spacewalkReadout}>
           <Text style={styles.spacewalkReadoutLabel}>{spacewalk?.schedule_status === 'latest' ? 'LATEST EVA' : 'NEXT EVA'}</Text>
@@ -2075,6 +2100,14 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.bgDeep,
     overflow: 'hidden',
   },
+  bodiesImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bodiesImageScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(5, 10, 22, 0.34)',
+  },
   bodiesSkyArc: {
     position: 'absolute',
     left: 20,
@@ -2116,29 +2149,48 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
   },
   bodiesReadout: {
-    position: 'absolute',
-    top: 10,
-    left: 12,
-    right: 12,
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
+    backgroundColor: Palette.surface + 'CC',
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.sm,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
   },
-  bodyNameRow: {
+  bodiesReadoutLabel: {
+    color: Palette.textTertiary,
+    fontSize: 7.5,
+    lineHeight: 9,
+    fontWeight: '700',
+  },
+  bodiesReadoutValue: {
+    color: Palette.textPrimary,
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '800',
+  },
+  bodiesBottomRow: {
     position: 'absolute',
     left: 8,
     right: 8,
     bottom: 8,
     flexDirection: 'row',
-    gap: 6,
+    alignItems: 'center',
+    gap: 8,
   },
   bodyNamePill: {
-    flex: 1,
+    flexBasis: 96,
     minWidth: 0,
     backgroundColor: Palette.surface + 'E6',
     borderWidth: 1,
     borderColor: Palette.borderSoft,
     borderRadius: Radius.sm,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
     paddingVertical: 5,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     alignItems: 'center',
   },
   bodyNameText: {
@@ -2194,6 +2246,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   spacewalkCrewPill: {
+    flexBasis: 96,
+    minWidth: 0,
     backgroundColor: Palette.surface + 'E6',
     borderWidth: 1,
     borderColor: Palette.borderSoft,

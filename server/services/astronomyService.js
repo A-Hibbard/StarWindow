@@ -15,9 +15,37 @@ const authString = Buffer.from(
 
 const ASTRONOMY_BASE = "https://api.astronomyapi.com/api/v2";
 const NASA_SVS_BASE = "https://svs.gsfc.nasa.gov/api/dialamoon";
+const NASA_IMAGES_BASE = "https://images-api.nasa.gov";
 const NASA_REQUEST_TIMEOUT_MS = 8000;
+const NASA_IMAGES_REQUEST_TIMEOUT_MS = 5000;
+const BODY_IMAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const SYNODIC_MONTH_DAYS = 29.530588853;
 const KNOWN_NEW_MOON_UTC = Date.UTC(2000, 0, 6, 18, 14);
+const bodyImageCache = new Map();
+const BODY_IMAGE_QUERIES = {
+  mercury: "Mercury MESSENGER global view",
+  venus: "Venus PIA00104",
+  mars: "Mars global color view",
+  jupiter: "Jupiter Hubble portrait",
+  saturn: "Saturn Cassini portrait",
+  uranus: "Uranus Voyager 2 planet",
+  neptune: "Neptune Voyager 2 planet",
+  pluto: "Pluto dwarf planet NASA",
+  moon: "Moon full disk NASA",
+  sun: "Sun SDO full disk",
+};
+const BAD_BODY_IMAGE_TERMS = [
+  "comparison",
+  "diagram",
+  "frame mosaic",
+  "map",
+  "montage",
+  "mosaic",
+  "portrait - views",
+  "solar system portrait",
+  "views of",
+  "left and right",
+];
 
 /**
  * Get celestial body positions for a coordinate + date window.
@@ -55,12 +83,14 @@ async function getBodyPositions({
     hasRequestedDateCoverage(cachedRows, fromDate, toDate)
   ) {
     console.log("\n=== BODY POSITIONS (cache hit) ===");
+    const results = cachedRows
+      .filter((r) => Number(r.altitude_degrees) > 0)
+      .map(transformCachedRow);
+
     return {
       location_id: location.location_id,
-      count: cachedRows.filter((r) => Number(r.altitude_degrees) > 0).length,
-      results: cachedRows
-        .filter((r) => Number(r.altitude_degrees) > 0)
-        .map(transformCachedRow),
+      count: results.length,
+      results: await enrichVisibleBodiesWithImages(results),
     };
   }
 
@@ -116,7 +146,11 @@ async function getBodyPositions({
       elongation: r.elongation,
     }));
 
-  return { location_id: location.location_id, count: visible.length, results: visible };
+  return {
+    location_id: location.location_id,
+    count: visible.length,
+    results: await enrichVisibleBodiesWithImages(visible),
+  };
 }
 
 /**
@@ -355,6 +389,117 @@ function transformMoonPhaseData(data, phaseDate, when) {
   };
 }
 
+async function enrichVisibleBodiesWithImages(bodies) {
+  if (!Array.isArray(bodies) || bodies.length === 0) return bodies;
+
+  const uniqueBodyNames = [...new Set(bodies.map((body) => body.body).filter(Boolean))];
+  const imageEntries = await Promise.all(
+    uniqueBodyNames.map(async (bodyName) => [bodyName, await getBodyImageUrl(bodyName)])
+  );
+  const imageUrlByBody = new Map(imageEntries);
+
+  return bodies.map((body) => ({
+    ...body,
+    image_url: imageUrlByBody.get(body.body) || null,
+    image_source: imageUrlByBody.get(body.body) ? "NASA Images" : null,
+  }));
+}
+
+async function getBodyImageUrl(bodyName) {
+  const query = getBodyImageQuery(bodyName);
+  if (!query) return null;
+
+  const cacheKey = normalizeBodyName(bodyName);
+  const cached = bodyImageCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < BODY_IMAGE_CACHE_TTL_MS) {
+    return cached.imageUrl;
+  }
+
+  const imageUrl = await fetchBodyImageFromNasa(query, bodyName).catch((error) => {
+    console.warn(`NASA body image fetch failed for ${bodyName}:`, error.message);
+    return null;
+  });
+
+  bodyImageCache.set(cacheKey, {
+    imageUrl,
+    cachedAt: Date.now(),
+  });
+  return imageUrl;
+}
+
+function getBodyImageQuery(bodyName) {
+  const key = normalizeBodyName(bodyName);
+  return BODY_IMAGE_QUERIES[key] || null;
+}
+
+async function fetchBodyImageFromNasa(query, bodyName) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), NASA_IMAGES_REQUEST_TIMEOUT_MS);
+
+  let response;
+  let data;
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      media_type: "image",
+      page_size: "10",
+    });
+    response = await fetch(`${NASA_IMAGES_BASE}/search?${params}`, {
+      signal: controller.signal,
+    });
+    data = await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    const err = new Error(`NASA Images returned ${response.status}`);
+    err.status = response.status;
+    throw err;
+  }
+
+  return pickBestBodyImage(data?.collection?.items || [], bodyName);
+}
+
+function pickBestBodyImage(items, bodyName) {
+  const normalizedBody = normalizeBodyName(bodyName);
+  const candidates = items
+    .map((item) => {
+      const imageUrl = item.links?.find((link) => link.render === "image")?.href || item.links?.[0]?.href || null;
+      if (!imageUrl) return null;
+
+      const data = item.data?.[0] || {};
+      const searchable = [
+        data.title,
+        data.description,
+        ...(Array.isArray(data.keywords) ? data.keywords : []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const title = String(data.title || "").toLowerCase();
+      const hasBodyMatch = searchable.includes(normalizedBody);
+      const hasBadTerm = BAD_BODY_IMAGE_TERMS.some((term) => searchable.includes(term));
+      if (!hasBodyMatch || hasBadTerm) return null;
+
+      const score =
+        (title.includes(normalizedBody) ? 8 : 0) +
+        (searchable.includes("global") ? 3 : 0) +
+        (searchable.includes("full disk") ? 3 : 0) +
+        (searchable.includes("planet") ? 2 : 0) +
+        (searchable.includes("hubble") ? 1 : 0) +
+        (searchable.includes("voyager") ? 1 : 0) +
+        (searchable.includes("cassini") ? 1 : 0);
+
+      return { imageUrl, score };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score);
+
+  return candidates[0]?.imageUrl || null;
+}
+
 function getPhaseAngle(data, age) {
   const explicitAngle = toNum(data.angle ?? data.phase_angle ?? data.phaseAngle);
   if (explicitAngle !== null) return normalizeAngle(explicitAngle);
@@ -441,6 +586,10 @@ function toNum(v) {
 
 function normalizeAngle(value) {
   return modulo(value, 360);
+}
+
+function normalizeBodyName(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function modulo(value, divisor) {

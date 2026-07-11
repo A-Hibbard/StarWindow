@@ -10,6 +10,8 @@ export type VisibleBody = {
   azimuth_degrees?: string | number | null;
   constellation?: string | null;
   magnitude?: string | number | null;
+  image_url?: string | null;
+  image_source?: string | null;
 };
 
 export type VisibleBodiesResponse = {
