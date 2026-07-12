@@ -1,51 +1,41 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import * as Location from 'expo-location';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MonthGrid } from '@/components/calendar/month-grid';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
+import { useCalendarEvents } from '@/hooks/use-calendar-events';
+import { getCalendarEventsForDate, getCalendarEventsForMonth } from '@/utilities/events-api';
 
 const categories = ['Meteor Showers', 'Rocket Launches', 'Alignments', 'More Filters'];
+const MONTHS_BEHIND_TO_FETCH = 2;
+const MONTHS_AHEAD_TO_FETCH = 3;
 
-//==========================================================================
-// Mock events data 
-//==========================================================================
-const Events = [
-  {
-    id: '1',
-    date: 12,
-    title: 'Perseid Meteor Shower Peak',
-    time: '02:00 AM - 05:00 AM Local',
-    detail: 'Expected ZHR (Zenith Hourly Rate) of up to 100 meteors per hour. Best viewing conditions far from city lights.',
-    icon: '✕',
-  },
-  {
-    id: '2',
-    date: 12,
-    title: 'Falcon 9 - Starlink Group 8-2',
-    time: '21:45 PM Local',
-    detail: 'Launch visible from Eastern seaboard. Trajectory indicates clear visibility post-stage separation.',
-    icon: '✕',
-  },
-  {
-    id: '3',
-    date: 12,
-    title: 'Sturgeon Supermoon',
-    time: 'All Night',
-    detail: 'The Moon will be near its closest approach to the Earth and may look slightly larger than usual.',
-    icon: '✕',
-  },
-  {
-    id: '4',
-    date: 8,
-    title: 'ISS Fly Over',
-    time: '19:30 PM Local',
-    detail: 'International Space Station visible overhead.',
-    icon: '✕',
-  },
-];
+function formatDateForApi(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getMonthIndex(year: number, month: number) {
+  return year * 12 + month;
+}
+
+function getCalendarFetchWindow(year: number, month: number) {
+  const from = new Date(year, month - MONTHS_BEHIND_TO_FETCH, 1);
+  const to = new Date(year, month + MONTHS_AHEAD_TO_FETCH + 1, 0);
+
+  return {
+    fromDate: formatDateForApi(from),
+    toDate: formatDateForApi(to),
+    startMonthIndex: getMonthIndex(from.getFullYear(), from.getMonth()),
+    endMonthIndex: getMonthIndex(to.getFullYear(), to.getMonth()),
+  };
+}
 
 export default function CalendarScreen() {
   const { width } = useWindowDimensions();
@@ -53,11 +43,69 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [loadedWindow, setLoadedWindow] = useState(() =>
+    getCalendarFetchWindow(today.getFullYear(), today.getMonth())
+  );
+  const [browserCoords, setBrowserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationNotice, setLocationNotice] = useState('Requesting browser location for visible sky events.');
+
+  useEffect(() => {
+    const currentMonthIndex = getMonthIndex(currentYear, currentMonth);
+    if (
+      currentMonthIndex <= loadedWindow.startMonthIndex ||
+      currentMonthIndex >= loadedWindow.endMonthIndex
+    ) {
+      setLoadedWindow(getCalendarFetchWindow(currentYear, currentMonth));
+    }
+  }, [currentMonth, currentYear, loadedWindow.endMonthIndex, loadedWindow.startMonthIndex]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (cancelled) return;
+        if (status !== 'granted') {
+          setBrowserCoords(null);
+          setLocationNotice('Location is required for visible sky events. Enable location in browser site settings and reload.');
+          return;
+        }
+
+        const position = await Location.getCurrentPositionAsync({});
+        if (cancelled) return;
+        setBrowserCoords({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setLocationNotice('Visible sky events use your current browser location.');
+      } catch {
+        if (cancelled) return;
+        setBrowserCoords(null);
+        setLocationNotice("Couldn't get your location. Check browser and system location settings, then reload.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const calendarQuery = useMemo(() => {
+    return {
+      fromDate: loadedWindow.fromDate,
+      toDate: loadedWindow.toDate,
+      includeVisibleBodies: true,
+      ...(browserCoords ?? {}),
+    };
+  }, [browserCoords, loadedWindow.fromDate, loadedWindow.toDate]);
+  const { events, isLoading, error } = useCalendarEvents(calendarQuery);
 
   //============================
   // Get events for selected date
   //============================
-  const selectedDayEvents = Events.filter((e) => e.date === selectedDate.getDate());
+  const selectedDayEvents = getCalendarEventsForDate(events, selectedDate);
+  const currentMonthEvents = getCalendarEventsForMonth(events, currentYear, currentMonth);
 
   //========================================================================
   // Determine if layout should be vertical (mobile) or horizontal (desktop)
@@ -83,6 +131,9 @@ export default function CalendarScreen() {
             </ThemedView>
           ))}
         </View>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.locationNotice}>
+          {locationNotice}
+        </ThemedText>
 
         {/* ================================================================
             "Frosted Glass" Container for Calendar + Selected Day
@@ -126,7 +177,7 @@ export default function CalendarScreen() {
               <MonthGrid
                 year={currentYear}
                 month={currentMonth}
-                events={Events}
+                events={currentMonthEvents}
                 selectedDate={selectedDate}
                 onSelectDate={setSelectedDate}
               />
@@ -143,7 +194,22 @@ export default function CalendarScreen() {
                 {selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
               </ThemedText>
 
-              {selectedDayEvents.length > 0 ? (
+              {isLoading ? (
+                <View style={styles.noEventsContainer}>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
+                    Loading calendar events...
+                  </ThemedText>
+                </View>
+              ) : error ? (
+                <View style={styles.noEventsContainer}>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
+                    Could not load calendar events.
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.shootingStarsPlaceholder}>
+                    {error}
+                  </ThemedText>
+                </View>
+              ) : selectedDayEvents.length > 0 ? (
                 <>
                   <ThemedText type="small" themeColor="textSecondary" style={styles.eventCount}>
                     {selectedDayEvents.length} celestial event{selectedDayEvents.length !== 1 ? 's' : ''} detected.
@@ -162,9 +228,11 @@ export default function CalendarScreen() {
                           <ThemedText type="smallBold" style={styles.eventTitle}>
                             {event.title}
                           </ThemedText>
-                          <ThemedText type="small" themeColor="textSecondary" style={styles.eventTime}>
-                            {event.time}
-                          </ThemedText>
+                          {event.time ? (
+                            <ThemedText type="small" themeColor="textSecondary" style={styles.eventTime}>
+                              {event.time}
+                            </ThemedText>
+                          ) : null}
                           <ThemedText type="small" style={styles.eventDetail}>
                             {event.detail}
                           </ThemedText>
@@ -414,6 +482,10 @@ const styles = StyleSheet.create({
   },
   categoryText: {
     color: '#A7C4FF',
+  },
+  locationNotice: {
+    paddingHorizontal: Spacing.two,
+    lineHeight: 18,
   },
   pressed: {
     opacity: 0.7,

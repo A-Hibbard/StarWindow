@@ -3,7 +3,16 @@ const path = require('path');
 const bodyParser= require ("body-parser");
 const ensureLoggedIn = require("./config/ensureLoggedIn")
 
-require('dotenv').config()
+require('dotenv').config({ path: path.join(__dirname, ".env") })
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason);
+});
+
 require("./config/database");
 
 const cors=require("cors");//cors is a cross origin resource sharing  alows to use back end with a different url from front-end
@@ -51,28 +60,12 @@ const server = app.listen(PORT, () => {
   console.log(`Express app is running on port: ${PORT}`)
 })
 
-// Fail loudly (not silently) if the port is already taken — usually an orphaned
-// `node server.js` from a previous run still holding it. Windows: find it with
-//   Get-NetTCPConnection -LocalPort 3001 -State Listen
-// then Stop-Process -Id <pid> -Force
-server.on("error", (err) => {
-  if (err.code === "EADDRINUSE") {
-    console.error(`\n[FATAL] Port ${PORT} is already in use — another process is ` +
-      `holding it (could be an orphaned node, or a DIFFERENT project also using ` +
-      `this port). Find it with:  Get-NetTCPConnection -LocalPort ${PORT} -State Listen\n`)
-  } else {
-    console.error("[FATAL] Server failed to start:", err)
+server.on("error", (error) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} is already in use. Stop the existing server or set PORT to another value.`);
+    process.exitCode = 1;
+    return;
   }
-  process.exit(1)
-})
-
-// Close the listener on Ctrl+C / termination so the port is released promptly
-// instead of lingering as a zombie that blocks the next start.
-function shutdown(signal) {
-  console.log(`\n${signal} received — shutting down and releasing port ${PORT}...`)
-  server.close(() => process.exit(0))
-  // Force-exit if connections don't drain in time.
-  setTimeout(() => process.exit(0), 3000).unref()
-}
-process.on("SIGINT", () => shutdown("SIGINT"))
-process.on("SIGTERM", () => shutdown("SIGTERM"))
+  console.error("Express server error:", error);
+  process.exitCode = 1;
+});

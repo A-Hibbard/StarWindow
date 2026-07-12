@@ -10,6 +10,7 @@ const { isCacheStale, TTL_MINUTES } = require("../middleware/cache");
 
 const ISS_API_BASE = "https://iss-api.fly.dev";
 const TZ = "America/New_York";
+const ISS_API_MAX_DAYS_AHEAD = 14;
 
 /**
  * Get upcoming visible ISS passes for a coordinate.
@@ -21,11 +22,13 @@ const TZ = "America/New_York";
  * @returns {Promise<object>} { observer, tle_epoch, generated_at, passes }
  */
 async function getIssPasses({ lat, lon, n = 5, daysAhead = 5 }) {
+  const passCount = normalizePositiveInteger(n, 5);
+  const searchDays = Math.min(normalizePositiveInteger(daysAhead, 5), ISS_API_MAX_DAYS_AHEAD);
   const location = await locationQueries.findOrCreateLocation({ lat, long: lon });
 
   // 1) Cache check — reuse the most recent cached batch if still fresh.
   const cachedRows = await issQueries.getCachedPasses(location.location_id);
-  if (cachedRows.length > 0 && !isCacheStale(cachedRows[0].cached_at, TTL_MINUTES.ISS)) {
+  if (hasUsablePassCache(cachedRows) && !isCacheStale(cachedRows[0].cached_at, TTL_MINUTES.ISS)) {
     console.log("\n=== ISS PASSES (cache hit) ===");
     return {
       observer: { lat, lon },
@@ -36,7 +39,7 @@ async function getIssPasses({ lat, lon, n = 5, daysAhead = 5 }) {
   }
 
   // 2) Fetch live.
-  const url = `${ISS_API_BASE}/iss-pass?lat=${lat}&lon=${lon}&n=${n}&days_ahead=${daysAhead}&visible_only=true`;
+  const url = `${ISS_API_BASE}/iss-pass?lat=${lat}&lon=${lon}&n=${passCount}&days_ahead=${searchDays}&visible_only=true`;
   const response = await fetch(url);
   if (!response.ok) {
     const err = new Error(`ISS API returned ${response.status}`);
@@ -51,7 +54,7 @@ async function getIssPasses({ lat, lon, n = 5, daysAhead = 5 }) {
     riseCompass: pass.rise?.compass || null,
     peakTime: pass.culmination?.time || null,
     peakCompass: pass.culmination?.compass || null,
-    peakElevationDeg: pass.culmination?.elevation ?? null,
+    peakElevationDeg: pass.culmination?.elevation_deg ?? pass.culmination?.elevation ?? null,
     setTime: pass.set?.time || null,
     setCompass: pass.set?.compass || null,
     durationSec: pass.duration_sec ?? null,
@@ -112,6 +115,16 @@ function num(v) {
   if (v === null || v === undefined) return null;
   const n = Number(v);
   return Number.isNaN(n) ? null : n;
+}
+
+function normalizePositiveInteger(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 1) return fallback;
+  return Math.floor(number);
+}
+
+function hasUsablePassCache(rows) {
+  return rows.length > 0 && rows.every((row) => row.peak_elevation_deg !== null);
 }
 
 module.exports = { getIssPasses };

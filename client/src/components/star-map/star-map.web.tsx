@@ -23,10 +23,14 @@ export function StarMap(props: StarMapProps) {
     return () => sub.remove();
   }, []);
 
-  const height = Math.min(Math.max(screen.height * 0.6, 320), 720);
+  const height = props.preview
+    ? '100%'
+    : props.immersive
+    ? Math.max(screen.height - 88, 360)
+    : Math.min(Math.max(screen.height * 0.6, 320), 720);
 
   return (
-    <View style={[styles.frame, { height }, props.style]}>
+    <View style={[styles.frame, props.preview && styles.previewFrame, { height }, props.style]}>
       {mounted && (
         <Suspense fallback={null}>
           <StarMapImpl {...props} />
@@ -49,5 +53,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.15,
     shadowRadius: 24,
+  },
+  previewFrame: {
+    borderWidth: 0,
+    borderRadius: 0,
+    shadowOpacity: 0,
+    shadowRadius: 0,
   },
 });

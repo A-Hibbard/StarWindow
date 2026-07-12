@@ -42,20 +42,37 @@ interface RawLaunch {
   } | null;
 }
 
+function normalizeLaunchKey(value?: string | null) {
+  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getLaunchKey(launch: RawLaunch) {
+  return [
+    normalizeLaunchKey(launch.name),
+    normalizeLaunchKey(launch.net),
+    normalizeLaunchKey(launch.rocket),
+    normalizeLaunchKey(launch.provider),
+  ].join('|');
+}
+
+function sortByNet(left: NonNullable<RocketLaunch['upcoming']>[number], right: NonNullable<RocketLaunch['upcoming']>[number]) {
+  const leftTime = left.net ? new Date(left.net).getTime() : Infinity;
+  const rightTime = right.net ? new Date(right.net).getTime() : Infinity;
+  return leftTime - rightTime;
+}
+
 /**
  * Fetches upcoming launches from our server and normalizes them into one
  * `RocketLaunch` per pad (so multiple launches at the same pad share a marker).
  * Entries without usable pad coordinates are dropped.
  */
 export async function fetchLaunches(limit = 20): Promise<RocketLaunch[]> {
-  // Launches live at /api/launches (server.js), NOT under /api/astronomy —
-  // that route only serves /bodies. Hitting the wrong path 404s and the map
-  // silently shows no launch markers.
   const res = await fetch(`${API_BASE}/api/launches?limit=${limit}`);
   if (!res.ok) throw new Error(`Launches request failed: ${res.status}`);
 
   const data: { results?: RawLaunch[] } = await res.json();
   const byPad = new Map<string, RocketLaunch>();
+  const seenByPad = new Map<string, Set<string>>();
 
   for (const l of data.results ?? []) {
     const lat = Number(l.pad?.latitude);
@@ -69,7 +86,14 @@ export async function fetchLaunches(limit = 20): Promise<RocketLaunch[]> {
     if (!site) {
       site = { id, name: padName, lat, lng, location: l.pad.location, upcoming: [] };
       byPad.set(id, site);
+      seenByPad.set(id, new Set());
     }
+
+    const launchKey = getLaunchKey(l);
+    const seenLaunches = seenByPad.get(id);
+    if (seenLaunches?.has(launchKey)) continue;
+    seenLaunches?.add(launchKey);
+
     site.upcoming!.push({
       name: l.name ?? 'Launch',
       net: l.net,
@@ -80,5 +104,10 @@ export async function fetchLaunches(limit = 20): Promise<RocketLaunch[]> {
     });
   }
 
-  return [...byPad.values()];
+  return [...byPad.values()]
+    .map((site) => ({
+      ...site,
+      upcoming: [...(site.upcoming ?? [])].sort(sortByNet).slice(0, 1),
+    }))
+    .filter((site) => (site.upcoming?.length ?? 0) > 0);
 }

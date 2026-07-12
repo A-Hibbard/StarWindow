@@ -1,4 +1,5 @@
 import { Asset } from 'expo-asset';
+import { router } from 'expo-router';
 import { divIcon } from 'leaflet';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -61,6 +62,14 @@ function formatNet(net?: string): string | null {
   if (!net) return null;
   const d = new Date(net);
   return Number.isNaN(d.getTime()) ? null : d.toLocaleString();
+}
+
+function goToLaunch(launchName: string) {
+  router.push({ pathname: '/explore', params: { launch: launchName } });
+}
+
+function isValidLatLng(lat: number, lng: number) {
+  return Number.isFinite(lat) && Number.isFinite(lng);
 }
 
 /** Smoothly flies the map to `center`/`zoom` when they change (e.g. once the
@@ -151,12 +160,18 @@ export default function StarMapImpl({
   userLocation,
   onSelectSpot,
   onLaunchesEnable,
-  showLightPollution = true,
   userScore,
   bestSpot,
   radiusMiles = DEFAULT_RADIUS,
   onRadiusChange,
+  showLightPollution = true,
+  preview = false,
 }: StarMapProps) {
+  const mapCenter = isValidLatLng(center[0], center[1]) ? center : DEFAULT_CENTER;
+  const safeUserLocation =
+    userLocation && isValidLatLng(userLocation.lat, userLocation.lng) ? userLocation : null;
+  const safeSpots = spots.filter((spot) => isValidLatLng(spot.lat, spot.lng));
+  const safeLaunches = launches.filter((site) => isValidLatLng(site.lat, site.lng));
   const [layers, setLayers] = useState<LayerState>({
     lightBasemap: false,
     lightPollution: showLightPollution,
@@ -191,12 +206,21 @@ export default function StarMapImpl({
   return (
     <>
       <MapContainer
-        center={center}
+        center={mapCenter}
         zoom={zoom}
-        scrollWheelZoom
+        scrollWheelZoom={!preview}
+        wheelPxPerZoomLevel={180}
+        wheelDebounceTime={80}
+        dragging={!preview}
+        doubleClickZoom={!preview}
+        touchZoom={!preview}
+        boxZoom={!preview}
+        keyboard={!preview}
+        zoomControl={!preview}
+        attributionControl={!preview}
         style={{ height: '100%', width: '100%' }}
-        className={classes.mapContainer}>
-        <Recenter center={center} zoom={zoom} />
+        className={`${classes.mapContainer} ${preview ? classes.previewMapContainer : ''}`}>
+        <Recenter center={mapCenter} zoom={zoom} />
 
         {/* Base map — key forces a clean swap between providers. Explicit
             zIndex keeps it *below* the light-pollution overlay: swapping the
@@ -247,7 +271,7 @@ export default function StarMapImpl({
           />
         )}
 
-        {spots.map((spot: StargazingSpot) => {
+        {safeSpots.map((spot: StargazingSpot) => {
           const color = bortleColor(spot.bortle);
           return (
             <CircleMarker
@@ -269,7 +293,7 @@ export default function StarMapImpl({
         })}
 
         {layers.launches &&
-          launches.map((site: RocketLaunch) => (
+          safeLaunches.map((site: RocketLaunch) => (
             <Marker key={site.id} position={[site.lat, site.lng]} icon={rocketIcon}>
               <Tooltip direction="top" offset={[0, -10]}>
                 {site.name}
@@ -284,16 +308,24 @@ export default function StarMapImpl({
                       {u.name}
                     </div>
                     {formatNet(u.net) && <div>{formatNet(u.net)}</div>}
-                    {u.status && <div>{u.status}</div>}
+                    <a
+                      href={`/explore?launch=${encodeURIComponent(u.name)}`}
+                      className={classes.launchPopupLink}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        goToLaunch(u.name);
+                      }}>
+                      Go to launch
+                    </a>
                   </div>
                 ))}
               </Popup>
             </Marker>
           ))}
 
-        {userLocation && (
+        {safeUserLocation && (
           <CircleMarker
-            center={[userLocation.lat, userLocation.lng]}
+            center={[safeUserLocation.lat, safeUserLocation.lng]}
             radius={6}
             pathOptions={{
               color: Palette.white,
@@ -307,16 +339,17 @@ export default function StarMapImpl({
           </CircleMarker>
         )}
 
-        {/* Viewing-score gauge above the user's pin. */}
-        {userLocation && userScore != null && (
+        {/* Viewing-score gauge above the user's pin. Use the *validated*
+            location so a bad coord never reaches Leaflet. */}
+        {safeUserLocation && userScore != null && (
           <ViewingScoreGauge
-            position={[userLocation.lat, userLocation.lng]}
+            position={[safeUserLocation.lat, safeUserLocation.lng]}
             score={userScore}
           />
         )}
 
         {/* Best nearby spot: a pin + its own gauge with a distance label. */}
-        {bestSpot && (
+        {bestSpot && isValidLatLng(bestSpot.lat, bestSpot.lon) && (
           <>
             <CircleMarker
               center={[bestSpot.lat, bestSpot.lon]}
@@ -341,8 +374,8 @@ export default function StarMapImpl({
         )}
       </MapContainer>
 
-      <LayersPanel layers={layers} onToggle={toggle} />
-      {onRadiusChange && (
+      {!preview && <LayersPanel layers={layers} onToggle={toggle} />}
+      {!preview && onRadiusChange && (
         <RadiusSlider miles={radiusMiles} onChange={onRadiusChange} />
       )}
     </>

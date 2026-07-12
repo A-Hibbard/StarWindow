@@ -61,18 +61,19 @@ export interface StarMapProps {
    * Lets the screen lazy-load `launches` instead of fetching on every map view.
    */
   onLaunchesEnable?: () => void;
+  /** Viewing score (0–100) at the user's location; renders a gauge over their pin. */
+  userScore?: number | null;
+  /** Best nearby stargazing spot; renders a pin + gauge with a distance label. */
+  bestSpot?: BestSpot | null;
+  /** Current best-spot search radius (miles) shown on the slider. */
+  radiusMiles?: number;
+  /** Fired as the radius slider moves; presence also toggles the slider on. */
+  onRadiusChange?: (miles: number) => void;
   /** Toggle the light-pollution overlay (web). Defaults to on. */
   showLightPollution?: boolean;
-
-  // --- Viewing-score gauges + radius search (web) -------------------------
-  /** Viewing score at the user's location; drives the gauge over the user pin. */
-  userScore?: number | null;
-  /** Best nearby spot from /api/map/best-spot; drives the second gauge. */
-  bestSpot?: BestSpot | null;
-  /** Current search radius in miles (5–100) for the radius slider. */
-  radiusMiles?: number;
-  /** Fired as the radius slider moves (debouncing/fetching is the caller's job). */
-  onRadiusChange?: (miles: number) => void;
-
+  /** Render a compact, non-interactive map for dashboard previews. */
+  preview?: boolean;
+  /** Make the full web map occupy most of the viewport. */
+  immersive?: boolean;
   style?: StyleProp<ViewStyle>;
 }

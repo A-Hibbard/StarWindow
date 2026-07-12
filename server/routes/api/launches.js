@@ -2,11 +2,15 @@ const express = require("express");
 const router = express.Router();
 const launchService = require("../../services/launchService");
 
-// GET /api/launches?limit=
+// GET /api/launches?limit=&from_date=&to_date=
 router.get("/", async (req, res) => {
-  const { limit = 5 } = req.query;
+  const { limit = 5, from_date, to_date } = req.query;
   try {
-    const result = await launchService.getLaunches({ limit: Number(limit) });
+    const result = await launchService.getLaunches({
+      limit: Number(limit),
+      fromDate: from_date,
+      toDate: to_date,
+    });
     res.json(result);
   } catch (error) {
     const status = error.status || 500;
