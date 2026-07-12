@@ -85,6 +85,12 @@ export function ViewingScoreGauge({
     [score, label, subLabel]
   );
 
+  // Guard: Leaflet throws "Invalid LatLng object: (NaN, NaN)" if a coordinate is
+  // NaN/undefined. Never let a bad score/spot payload crash the whole map.
+  if (!Number.isFinite(position?.[0]) || !Number.isFinite(position?.[1])) {
+    return null;
+  }
+
   return (
     <Marker
       position={position}
