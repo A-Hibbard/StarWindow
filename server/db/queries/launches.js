@@ -23,6 +23,7 @@ const eventQueries = require("./events");
 
 module.exports = {
   getCachedLaunches,
+  getUpcomingLaunches,
   saveLaunch,
   findLaunchByName,
   refreshLaunchByName,
@@ -79,6 +80,47 @@ async function getCachedLaunches(opts = {}) {
       LIMIT ${limitPlaceholder}
     `,
     values
+  );
+  return result.rows;
+}
+
+/**
+ * Return UPCOMING cached launches (base event start_time >= now), soonest first.
+ * Same projection as getCachedLaunches, just filtered to future launches — used
+ * by the unified events list so past launches don't show up.
+ * @param {number} [limit=200]
+ */
+async function getUpcomingLaunches(limit = 200) {
+  const result = await database.query(
+    `
+      SELECT * FROM (
+        SELECT DISTINCT ON (rl.name, e.start_time)
+          rl.launch_id, rl.event_id, rl.name, rl.status, rl.net_precision,
+          rl.image_url,
+          e.start_time AS net, e.date_precision, e.webcast_live, e.video_url,
+          m.name AS mission_name, m.mission_type, m.description AS mission_description,
+          r.model AS rocket_model,
+          p.name AS provider_name,
+          ls.status AS launch_status,
+          pad.name AS pad_name,
+          loc.name AS pad_location, loc.lat AS pad_lat, loc.long AS pad_lon
+        FROM public.rocket_launch rl
+        JOIN public.events e ON e.event_id = rl.event_id
+        LEFT JOIN public.missions m ON m.mission_id = rl.mission_id
+        LEFT JOIN public.rockets r ON r.rocket_id = rl.rocket_id
+        LEFT JOIN public.providers p ON p.provider_id = rl.provider_id
+        LEFT JOIN public.launch_statuses ls ON ls.launch_status_id = rl.launch_status_id
+        LEFT JOIN public.pads pad ON pad.pad_id = rl.pad_id
+        LEFT JOIN public.locations loc ON loc.location_id = pad.location_id
+        WHERE e.start_time >= now()
+        -- DISTINCT ON collapses launches that got inserted more than once
+        -- (dedup guard was added after some dupes already existed); keep lowest id.
+        ORDER BY rl.name, e.start_time, rl.launch_id
+      ) uniq
+      ORDER BY uniq.net ASC
+      LIMIT $1
+    `,
+    [limit]
   );
   return result.rows;
 }

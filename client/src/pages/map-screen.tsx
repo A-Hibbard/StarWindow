@@ -9,11 +9,16 @@ import { ThemedText } from '@/components/themed-text';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchLaunches } from '@/lib/astronomy';
+import { fetchBestSpot, type BestSpot } from '@/lib/map-api';
 import * as usersService from '@/utilities/users-service';
 
 // Zoom we drop to once we know the user's location - close enough to see their
 // city while the upscaled light-pollution overlay stays readable.
 const CITY_ZOOM = 11;
+
+// Default best-nearby-spot search radius (miles) + slider debounce.
+const DEFAULT_RADIUS = 25;
+const RADIUS_DEBOUNCE_MS = 300;
 
 // Placeholder data until a backend feed lands. Bortle: 1 = pristine dark sky.
 const SAMPLE_SPOTS: StargazingSpot[] = [
@@ -41,6 +46,9 @@ export default function MapScreen() {
   const [center, setCenter] = useState<[number, number] | undefined>(undefined);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [launches, setLaunches] = useState<RocketLaunch[]>([]);
+  const [radiusMiles, setRadiusMiles] = useState(DEFAULT_RADIUS);
+  const [userScore, setUserScore] = useState<number | null>(null);
+  const [bestSpot, setBestSpot] = useState<BestSpot | null>(null);
 
   useEffect(() => {
     if (!usersService.getToken()) {
@@ -82,6 +90,33 @@ export default function MapScreen() {
     };
   }, []);
 
+  // Re-query the best nearby spot whenever location or radius changes. Debounced
+  // so dragging the slider fires one request ~300ms after the user stops; the
+  // previous in-flight request is aborted.
+  useEffect(() => {
+    if (!userLocation) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetchBestSpot(
+          { lat: userLocation.lat, lon: userLocation.lng, radiusMiles },
+          controller.signal
+        );
+        setUserScore(res.user_score);
+        setBestSpot(res.best_spot);
+      } catch (e) {
+        if ((e as Error)?.name !== 'AbortError') {
+          console.warn('Failed to load best spot:', e);
+        }
+      }
+    }, RADIUS_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [userLocation, radiusMiles]);
+
   const insets = {
     ...safeAreaInsets,
     bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
@@ -117,6 +152,10 @@ export default function MapScreen() {
           zoom={center ? CITY_ZOOM : undefined}
           userLocation={userLocation}
           onLaunchesEnable={loadLaunches}
+          userScore={userScore}
+          bestSpot={bestSpot}
+          radiusMiles={radiusMiles}
+          onRadiusChange={setRadiusMiles}
           immersive
         />
       </View>

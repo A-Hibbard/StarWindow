@@ -2,7 +2,29 @@ import type { RocketLaunch } from '@/components/star-map';
 
 // Base URL of our Express server. Override per-environment with
 // EXPO_PUBLIC_API_URL (e.g. a deployed server); falls back to local dev.
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3005';
+
+/** Moon render + phase for a given instant, from GET /api/astronomy/moon. */
+export interface MoonView {
+  datetime: string;
+  /** URL of NASA's rendered Moon image, or null if unavailable. */
+  image_url: string | null;
+  /** Percent illuminated (0–100). */
+  phase: number | null;
+  /** Days since the new moon (0–29.53). */
+  age: number | null;
+}
+
+/**
+ * Fetch the current (or a given instant's) Moon view via our backend proxy of
+ * NASA's Dial-a-Moon. Proxied server-side so it isn't blocked by browser CORS.
+ */
+export async function fetchMoonView(datetime?: string): Promise<MoonView> {
+  const qs = datetime ? `?datetime=${encodeURIComponent(datetime)}` : '';
+  const res = await fetch(`${API_BASE}/api/astronomy/moon${qs}`);
+  if (!res.ok) throw new Error(`Moon request failed: ${res.status}`);
+  return res.json();
+}
 
 /** Raw shape of one launch as returned by GET /api/astronomy/launches. */
 interface RawLaunch {

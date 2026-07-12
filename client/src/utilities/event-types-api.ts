@@ -1,6 +1,6 @@
 import sendRequest from './send-request';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3005';
 const BASE_URL = `${API_BASE}/api/event-types`;
 
 export interface EventType {

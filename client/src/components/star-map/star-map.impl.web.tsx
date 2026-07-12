@@ -15,9 +15,15 @@ import {
 
 import { Palette, Radius } from '@/constants/tokens';
 import type { RocketLaunch, StarMapProps, StargazingSpot } from './types';
+import { ViewingScoreGauge } from './viewing-score-gauge.web';
 
 import 'leaflet/dist/leaflet.css';
 import classes from './star-map.module.css';
+
+// Radius slider bounds (miles) — mirrors bestSpotService on the server.
+const MIN_RADIUS = 5;
+const MAX_RADIUS = 100;
+const DEFAULT_RADIUS = 25;
 
 // NOTE: This module statically imports `leaflet`, which touches `window`/
 // `document` at evaluation time. It must only ever be loaded in the browser —
@@ -116,6 +122,36 @@ function LayersPanel({
   );
 }
 
+/** Search-radius slider, overlaid bottom-left. Uses a raw range input (web
+ *  only) since react-native has no equivalent primitive. Fires `onChange` on
+ *  every drag — debouncing the resulting query is the caller's responsibility. */
+function RadiusSlider({
+  miles,
+  onChange,
+}: {
+  miles: number;
+  onChange: (miles: number) => void;
+}) {
+  return (
+    <View style={styles.sliderWrap}>
+      <View style={styles.sliderHeader}>
+        <Text style={styles.sliderTitle}>SEARCH RADIUS</Text>
+        <Text style={styles.sliderValue}>{Math.round(miles)} mi</Text>
+      </View>
+      <input
+        type="range"
+        min={MIN_RADIUS}
+        max={MAX_RADIUS}
+        step={1}
+        value={miles}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label="Search radius in miles"
+        style={{ width: '100%', accentColor: Palette.accent, cursor: 'pointer' }}
+      />
+    </View>
+  );
+}
+
 export default function StarMapImpl({
   spots = [],
   launches = [],
@@ -124,6 +160,10 @@ export default function StarMapImpl({
   userLocation,
   onSelectSpot,
   onLaunchesEnable,
+  userScore,
+  bestSpot,
+  radiusMiles = DEFAULT_RADIUS,
+  onRadiusChange,
   showLightPollution = true,
   preview = false,
 }: StarMapProps) {
@@ -182,10 +222,14 @@ export default function StarMapImpl({
         className={`${classes.mapContainer} ${preview ? classes.previewMapContainer : ''}`}>
         <Recenter center={mapCenter} zoom={zoom} />
 
-        {/* Base map — key forces a clean swap between providers. */}
+        {/* Base map — key forces a clean swap between providers. Explicit
+            zIndex keeps it *below* the light-pollution overlay: swapping the
+            base layer re-adds it last, and without a fixed zIndex Leaflet would
+            stack the fresh tiles on top and hide the overlay. */}
         {layers.lightBasemap ? (
           <TileLayer
             key="light"
+            zIndex={1}
             url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
             subdomains="abcd"
             maxZoom={20}
@@ -194,6 +238,7 @@ export default function StarMapImpl({
         ) : (
           <TileLayer
             key="dark"
+            zIndex={1}
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             subdomains="abcd"
             maxZoom={20}
@@ -203,6 +248,7 @@ export default function StarMapImpl({
 
         {layers.lightPollution && (
           <TileLayer
+            zIndex={10}
             url="https://djlorenz.github.io/astronomy/image_tiles/tiles2024/tile_{z}_{x}_{y}.png"
             errorTileUrl="https://djlorenz.github.io/astronomy/image_tiles/tiles2024/black.png"
             // These are 1024px tiles offset by -2 zoom levels; without
@@ -292,9 +338,46 @@ export default function StarMapImpl({
             </Tooltip>
           </CircleMarker>
         )}
+
+        {/* Viewing-score gauge above the user's pin. Use the *validated*
+            location so a bad coord never reaches Leaflet. */}
+        {safeUserLocation && userScore != null && (
+          <ViewingScoreGauge
+            position={[safeUserLocation.lat, safeUserLocation.lng]}
+            score={userScore}
+          />
+        )}
+
+        {/* Best nearby spot: a pin + its own gauge with a distance label. */}
+        {bestSpot && isValidLatLng(bestSpot.lat, bestSpot.lon) && (
+          <>
+            <CircleMarker
+              center={[bestSpot.lat, bestSpot.lon]}
+              radius={6}
+              pathOptions={{
+                color: Palette.white,
+                fillColor: '#2E9E5B',
+                fillOpacity: 1,
+                weight: 2,
+              }}>
+              <Tooltip direction="top" offset={[0, -6]}>
+                Best nearby spot
+              </Tooltip>
+            </CircleMarker>
+            <ViewingScoreGauge
+              position={[bestSpot.lat, bestSpot.lon]}
+              score={bestSpot.score}
+              label={`${Math.round(bestSpot.distance_miles)} mi ${bestSpot.bearing}`}
+              subLabel={`${bestSpot.drive_minutes} min away`}
+            />
+          </>
+        )}
       </MapContainer>
 
       {!preview && <LayersPanel layers={layers} onToggle={toggle} />}
+      {!preview && onRadiusChange && (
+        <RadiusSlider miles={radiusMiles} onChange={onRadiusChange} />
+      )}
     </>
   );
 }
@@ -377,5 +460,37 @@ const styles = StyleSheet.create({
   knobOn: {
     backgroundColor: Palette.accent,
     alignSelf: 'flex-end',
+  },
+  sliderWrap: {
+    position: 'absolute',
+    bottom: 24,
+    left: 12,
+    width: 200,
+    backgroundColor: Palette.cardBackground,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Palette.cardBorder,
+    padding: 12,
+    gap: 8,
+    zIndex: 1100,
+    shadowColor: Palette.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+  },
+  sliderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sliderTitle: {
+    color: Palette.tagline,
+    fontSize: 10,
+    letterSpacing: 2,
+  },
+  sliderValue: {
+    color: Palette.accent,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
