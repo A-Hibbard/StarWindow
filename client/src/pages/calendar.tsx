@@ -5,48 +5,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { Palette, Radius } from '@/constants/tokens';
 import { ThemedView } from '@/components/themed-view';
-import { MonthGrid } from '@/components/calendar/month-grid';
+import { MonthGrid, CalendarEvent } from '@/components/calendar/month-grid';
+import { ShootingStar } from '@/components/shooting-star';
+import { getEventIconByType } from '@/lib/event-icons';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-
-const categories = ['Meteor Showers', 'Rocket Launches', 'Alignments', 'More Filters'];
-
-//==========================================================================
-// Mock events data 
-//==========================================================================
-const Events = [
-  {
-    id: '1',
-    date: 12,
-    title: 'Perseid Meteor Shower Peak',
-    time: '02:00 AM - 05:00 AM Local',
-    detail: 'Expected ZHR (Zenith Hourly Rate) of up to 100 meteors per hour. Best viewing conditions far from city lights.',
-    icon: '✕',
-  },
-  {
-    id: '2',
-    date: 12,
-    title: 'Falcon 9 - Starlink Group 8-2',
-    time: '21:45 PM Local',
-    detail: 'Launch visible from Eastern seaboard. Trajectory indicates clear visibility post-stage separation.',
-    icon: '✕',
-  },
-  {
-    id: '3',
-    date: 12,
-    title: 'Sturgeon Supermoon',
-    time: 'All Night',
-    detail: 'The Moon will be near its closest approach to the Earth and may look slightly larger than usual.',
-    icon: '✕',
-  },
-  {
-    id: '4',
-    date: 8,
-    title: 'ISS Fly Over',
-    time: '19:30 PM Local',
-    detail: 'International Space Station visible overhead.',
-    icon: '✕',
-  },
-];
 
 export default function CalendarScreen() {
   const { width } = useWindowDimensions();
@@ -54,45 +16,90 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
+/**
+ * PLACEHOLDER EVENTS DATA: In a real application, this data would be fetched from an API or database. For demonstration/testing purposes, there are hardcoded events.
+ */
+  const Events: CalendarEvent[] = [
+  {
+    id: '1',
+    date: 12,
+    eventType: 'meteor',
+    title: 'Perseid Meteor Shower Peak',
+    time: '02:00 AM - 05:00 AM Local',
+    detail: 'Expected ZHR (Zenith Hourly Rate) of up to 100 meteors per hour. Best viewing conditions far from city lights.',
+  },
+  {
+    id: '2',
+    date: 12,
+    eventType: 'launch',
+    title: 'Falcon 9 - Starlink Group 8-2',
+    time: '21:45 PM Local',
+    detail: 'Launch visible from Eastern seaboard. Trajectory indicates clear visibility post-stage separation.',
+  },
+  {
+    id: '3',
+    date: 12,
+    eventType: 'moon',
+    title: 'Sturgeon Supermoon',
+    time: 'All Night',
+    detail: 'The Moon will be near its closest approach to the Earth and may look slightly larger than usual.',
+  },
+  {
+    id: '4',
+    date: 8,
+    eventType: 'iss',
+    title: 'ISS Fly Over',
+    time: '19:30 PM Local',
+    detail: 'International Space Station visible overhead.',
+  },
+];
 
-  //============================
   // Get events for selected date
-  //============================
   const selectedDayEvents = Events.filter((e) => e.date === selectedDate.getDate());
 
-  //========================================================================
   // Determine if layout should be vertical (mobile) or horizontal (desktop)
-  //========================================================================
   const isVertical = width < 900;
   const monthName = new Date(currentYear, currentMonth).toLocaleDateString('en-US', {
     month: 'long',
     year: 'numeric',
   });
 
+  const STARS = Array.from({ length: 150 }, (_, i) => ({
+    top: (i * 23.7) % 100,
+    left: (i * 41.3) % 100,
+    size: (i % 4) + 0.5,
+    opacity: (i % 6) * 0.08 + 0.15,
+  }));
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
-        {/* ================================================================
-            Filter Buttons
-            ================================================================ */}
-        <View style={styles.filterButtonsContainer}>
-          {categories.map((category) => (
-            <ThemedView key={category} style={styles.categoryPill}>
-              <ThemedText type="small" style={styles.categoryText}>
-                {category}
-              </ThemedText>
-            </ThemedView>
-          ))}
-        </View>
+      <View style={styles.starField} pointerEvents="none">
+        {STARS.map((star, i) => (
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              top: `${star.top}%` as any,
+              left: `${star.left}%` as any,
+              width: star.size,
+              height: star.size,
+              borderRadius: star.size,
+               backgroundColor: Palette.white,
+              opacity: star.opacity,
+            }}
+          />
+        ))}
+      </View>
 
-        {/* ================================================================
-            "Frosted Glass" Container for Calendar + Selected Day
-            ================================================================ */}
+      {[0, 800, 1600, 2400, 3200, 4000].map((delay, i) => (
+        <ShootingStar key={i} delay={delay} />
+      ))}
+
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+        {/* Calendar Container */}
         <ThemedView style={styles.calendarContainer}>
           <View style={isVertical ? styles.layoutVertical : styles.layoutHorizontal}>
-            {/* ============================================================
-                Calendar Section (Left)
-                ============================================================ */}
+            {/* Calendar Section (Left) */}
             <ThemedView style={[styles.calendarSection, !isVertical && { flex: 0.7 }]}>
               <View style={styles.monthHeader}>
                 <Pressable
@@ -104,12 +111,14 @@ export default function CalendarScreen() {
                       setCurrentMonth(currentMonth - 1);
                     }
                   }}
-                  style={({ pressed }) => pressed && styles.pressed}>
+                  style={({ pressed }) => [pressed && styles.pressed, styles.headerButton]}>
                   <ThemedText type="small">← Prev</ThemedText>
                 </Pressable>
-                <ThemedText type="title" style={styles.monthTitle}>
-                  {monthName}
-                </ThemedText>
+                <View style={styles.monthHeaderContent} pointerEvents="none">
+                  <ThemedText type="title" style={styles.monthTitle}>
+                    {monthName}
+                  </ThemedText>
+                </View>
                 <Pressable
                   onPress={() => {
                     if (currentMonth === 11) {
@@ -119,7 +128,7 @@ export default function CalendarScreen() {
                       setCurrentMonth(currentMonth + 1);
                     }
                   }}
-                  style={({ pressed }) => pressed && styles.pressed}>
+                  style={({ pressed }) => [pressed && styles.pressed, styles.headerButton]}>
                   <ThemedText type="small">Next →</ThemedText>
                 </Pressable>
               </View>
@@ -133,16 +142,17 @@ export default function CalendarScreen() {
               />
             </ThemedView>
 
-            {/* ============================================================
-                Selected Day Panel (Right)
-                ============================================================ */}
+            {/* Selected Day Panel (Right) */}
             <ThemedView style={[styles.selectedDayPanel, !isVertical && { flex: 0.3 }]}>
-              <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionLabel}>
-                SELECTED DAY
-              </ThemedText>
-              <ThemedText type="title" style={styles.selectedDateText}>
-                {selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-              </ThemedText>
+              <View style={[styles.selectedDayHeader, { zIndex: 99 }]}>
+                <ThemedText type="title" style={styles.selectedDateText}>
+                  {selectedDate.toLocaleDateString('en-US', { 
+                    month: 'long', 
+                    day: 'numeric', 
+                    year: 'numeric' 
+                  })}
+                </ThemedText>
+              </View>
 
               {selectedDayEvents.length > 0 ? (
                 <>
@@ -151,13 +161,12 @@ export default function CalendarScreen() {
                   </ThemedText>
 
                   <ScrollView
-                    style={styles.eventListContainer}
                     showsVerticalScrollIndicator={true}
                     contentContainerStyle={styles.eventList}>
                     {selectedDayEvents.map((event) => (
                       <ThemedView key={event.id} style={styles.eventCard}>
                         <View style={styles.eventCardIconBox}>
-                          <ThemedText style={styles.eventCardIcon}>{event.icon}</ThemedText>
+                          <ThemedText style={styles.eventCardIcon}>{event.icon ?? getEventIconByType(event.eventType)}</ThemedText>
                         </View>
                         <View style={styles.eventContent}>
                           <ThemedText type="smallBold" style={styles.eventTitle}>
@@ -192,7 +201,12 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#050814',
+    backgroundColor: Palette.background,
+  },
+  starField: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
   },
   scrollView: {
     flex: 1,
@@ -203,12 +217,12 @@ const styles = StyleSheet.create({
     paddingTop: 120,
   },
   calendarContainer: {
-    marginTop: 24,
-    paddingTop: 16,
+    marginTop: Spacing.five,
+    paddingTop: Spacing.five,
     backgroundColor: 'rgba(11, 18, 38, 0.8)',
     backdropFilter: 'blur(14px)',
-    borderRadius: Spacing.five,
-    padding: Spacing.four,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
     borderWidth: 1,
     borderColor: 'rgba(58, 134, 255, 0.25)',
   },
@@ -220,12 +234,11 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     gap: Spacing.four,
   },
-  //==================================================
-  // Calendar Section (Left)
-  //================================================== 
   calendarSection: {
     backgroundColor: 'rgb(11, 18, 38)',
     gap: Spacing.three,
+    position: 'relative',
+    zIndex: 1,
   },
   monthHeader: {
     flexDirection: 'row',
@@ -234,189 +247,105 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
     paddingBottom: Spacing.two,
     borderBottomWidth: 1,
-    borderBottomColor: '#FFFFFF',
+    borderBottomColor: Palette.borderSoft,
     backgroundColor: 'rgb(11, 18, 38)',
     borderRadius: Spacing.three,
     padding: Spacing.two,
   },
-  monthTitle: {
-         fontWeight: '900',
-      color: Palette.white,
-      letterSpacing: 4,
-      marginBottom: 4,
-      textShadowColor: Palette.accent,
-      textShadowOffset: { width: 0, height: 0 },
-      textShadowRadius: 14,
-  },
-  calendarCard: {
-    backgroundColor: 'rgb(11, 18, 38)',
-    gap: 0,
-    width: '100%',
-  },
-  calendarRow: {
-    flexDirection: 'row',
-    marginBottom: 1,
-    gap: 1,
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  dayCell: {
+  monthHeaderContent: {
     flex: 1,
-    minHeight: 130,
-    minWidth: 140,
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    backgroundColor: 'rgba(22, 32, 61, 0.72)',
-    borderRadius: Spacing.three,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    position: 'relative',
-  },
-  dayCellHeader: {
-    backgroundColor: 'transparent',
-    minHeight: 50,
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  dayCellSelected: {
-    backgroundColor: 'rgba(58, 134, 255, 0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(58, 134, 255, 0.55)',
-  },
-  dayCellDisabled: {
-    backgroundColor: 'rgba(15, 20, 32, 0.35)',
-    opacity: 1,
-  },
-  dayCellText: {
-         fontWeight: '900',
-      color: Palette.white,
-      letterSpacing: 4,
-      marginBottom: 4,
-      textShadowColor: Palette.accent,
-      textShadowOffset: { width: 0, height: 0 },
-      textShadowRadius: 14,
-  },
-  dayHeaderText: {
-         fontWeight: '900',
-      color: Palette.white,
-      letterSpacing: 4,
-      marginBottom: 4,
-      textShadowColor: Palette.accent,
-      textShadowOffset: { width: 0, height: 0 },
-      textShadowRadius: 14,
-  },
-  dayCellSelectedText: {
-         fontWeight: '900',
-      color: Palette.white,
-      letterSpacing: 4,
-      marginBottom: 4,
-      textShadowColor: Palette.accent,
-      textShadowOffset: { width: 0, height: 0 },
-      textShadowRadius: 14,
-  },
-  dayCellDisabledText: {
-         fontWeight: '900',
-      color: Palette.white,
-      letterSpacing: 4,
-      marginBottom: 4,
-      textShadowColor: Palette.accent,
-      textShadowOffset: { width: 0, height: 0 },
-      textShadowRadius: 14,
-  },
-  //==================================================
-  // Event Icons in Day Cells
-  //==================================================
-  eventIconsContainer: {
     position: 'absolute',
-    bottom: Spacing.one,
-    left: 0,
-    right: 0,
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: Spacing.half,
-  },
-  dayNumberContainer: {
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-    minHeight: 26,
-    width: '100%',
-  },
-  eventIconBox: {
-    width: 20,
-    height: 20,
-    backgroundColor: '#3A86FF',
-    borderRadius: 3,
-    justifyContent: 'center',
+    left: Spacing.two,
+    right: Spacing.two,
     alignItems: 'center',
   },
-  eventIcon: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: 'bold',
+  monthTitle: {
+    fontWeight: '900',
+    color: Palette.textPrimary,
+    letterSpacing: 4,
+    marginBottom: 4,
+    textShadowColor: Palette.accent,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 14,
   },
   selectedDayPanel: {
-    backgroundColor: 'rgb(11, 18, 38)',
+    backgroundColor: Palette.surface,
     gap: Spacing.three,
+    position: 'relative',
+    zIndex: 3,
+  },
+  selectedDayHeader: {
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: Spacing.one,
+    zIndex: 3,
+    position: 'relative',
+    paddingTop: Spacing.three,
   },
   sectionLabel: {
-         fontWeight: '900',
-      color: Palette.white,
-      letterSpacing: 4,
-      marginBottom: 4,
-      textShadowColor: Palette.accent,
-      textShadowOffset: { width: 0, height: 0 },
-      textShadowRadius: 14,
+    fontWeight: '900',
+    color: Palette.textTertiary,
+    letterSpacing: 1,
+    textShadowColor: Palette.accent,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 14,
+    zIndex: 30,
+    position: 'absolute',
+    top: -Spacing.half,
+    left: Spacing.one,
+    backgroundColor: Palette.surface,
+    paddingHorizontal: Spacing.one,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
   },
   selectedDateText: {
-           fontWeight: '900',
-      color: Palette.white,
-      letterSpacing: 4,
-      marginBottom: 4,
-      textShadowColor: Palette.accent,
-      textShadowOffset: { width: 0, height: 0 },
-      textShadowRadius: 14,
+    fontWeight: '900',
+    color: Palette.textPrimary,
+    letterSpacing: 4,
+    textShadowColor: Palette.accent,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 14,
+    marginTop: Spacing.three,
+    zIndex: 1,
   },
   eventCount: {
-    color: '#B0B4BA',
-  },
-  eventListContainer: {
-    maxHeight: 500,
+    color: Palette.textSecondary,
+    marginVertical: Spacing.two,
   },
   eventList: {
     gap: Spacing.three,
   },
   eventCard: {
-    backgroundColor: '#10172C',
+    backgroundColor: 'rgba(22, 32, 61, 0.72)',
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.md,
     flexDirection: 'row',
     gap: Spacing.three,
   },
   eventCardIconBox: {
     width: 40,
     height: 40,
-    backgroundColor: '#3A86FF',
-    borderRadius: Spacing.two,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: Palette.accent,
+    borderRadius: Radius.sm,
   },
   eventCardIcon: {
-    color: '#FFFFFF',
+    color: Palette.textPrimary,
     fontSize: 16,
     fontWeight: 'bold',
   },
   eventContent: {
     flex: 1,
-    gap: Spacing.one,
+    gap: Spacing.one, 
   },
   eventTitle: {
-    color: '#FFFFFF',
+    color: Palette.textPrimary,
   },
   eventTime: {
-    color: '#A7C4FF',
+    color: Palette.accent,
   },
   eventDetail: {
-    color: '#B0B4BA',
+    color: Palette.textSecondary,
   },
   noEventsContainer: {
     alignItems: 'center',
@@ -425,29 +354,12 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   noEventsText: {
-    color: '#B0B4BA',
-  },
-  //==================================================
-  // Filter Buttons Container
-  //==================================================
-  filterButtonsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.two,
-    marginTop: 20,
-  },
-  categoryPill: {
-    backgroundColor: '#1A2744',
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
-  },
-  categoryText: {
-    color: '#A7C4FF',
+    color: Palette.textSecondary,
   },
   pressed: {
     opacity: 0.7,
   },
+  headerButton: {
+    cursor: 'pointer',
+  },
 });
-
