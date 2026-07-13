@@ -6,6 +6,7 @@ export interface AuthUser {
   f_name: string;
   l_name: string;
   status_id?: number | null;
+  status?: string | null;
 }
 
 export interface SignUpData {
@@ -42,6 +43,20 @@ export async function login(credentials: LoginCredentials): Promise<AuthUser | n
 
 export function saveEventTypes(eventTypeIds: number[]) {
   return usersAPI.saveEventTypes(eventTypeIds);
+}
+
+export function getCurrentUser(): Promise<AuthUser> {
+  return usersAPI.getCurrentUser();
+}
+
+export async function updateCurrentUser(userData: Pick<AuthUser, 'f_name' | 'l_name' | 'email'>): Promise<AuthUser | null> {
+  const token = await usersAPI.updateCurrentUser(userData);
+  setToken(token);
+  return getUser();
+}
+
+export function getUserEventTypes() {
+  return usersAPI.getUserEventTypes();
 }
 
 export function getToken(): string | null {

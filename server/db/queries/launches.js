@@ -14,37 +14,52 @@
 //     mission_id FK, rocket_id FK, provider_id FK, launch_status_id FK, pad_id FK,
 //     image_url)
 //
-// ===========================================================================
-// TODO (SCHEMA GAPS):
-//  1. rocket_launch has no updated_at/cached_at => no TTL cache check possible.
-//     Recommend: ALTER TABLE rocket_launch ADD COLUMN updated_at TIMESTAMPTZ
-//     DEFAULT now(); (and/or on events). Service currently refetches live.
-//  2. There is no natural key (e.g. the LL2 launch UUID) stored anywhere, so a
-//     given launch can't be upserted idempotently — re-running saveLaunch()
-//     inserts a NEW events + rocket_launch each time. Recommend adding an
-//     ll2_id TEXT UNIQUE column to rocket_launch and switching to ON CONFLICT.
-//     Until then the launch service de-dups defensively by name (see notes there).
-// ===========================================================================
+// There is still no LL2 UUID natural key in the schema, so launch refreshes are
+// matched defensively by name.
+//
 
 const database = require("../../config/database");
 const eventQueries = require("./events");
 
 module.exports = {
   getCachedLaunches,
+  getUpcomingLaunches,
   saveLaunch,
   findLaunchByName,
+  refreshLaunchByName,
 };
 
 /**
  * Return cached launches joined with their lookups + base event, soonest first.
- * @param {number} [limit=20]
+ * @param {object|number} [opts]
+ * @param {number} [opts.limit=20]
+ * @param {string} [opts.fromDate]
+ * @param {string} [opts.toDate]
  */
-async function getCachedLaunches(limit = 20) {
+async function getCachedLaunches(opts = {}) {
+  const { limit = 20, fromDate, toDate } =
+    typeof opts === "number" ? { limit: opts } : opts || {};
+  const values = [];
+  const where = [];
+
+  if (fromDate) {
+    values.push(fromDate);
+    where.push(`e.start_time >= $${values.length}::timestamptz`);
+  }
+
+  if (toDate) {
+    values.push(toDate);
+    where.push(`e.start_time < ($${values.length}::date + INTERVAL '1 day')`);
+  }
+
+  values.push(limit);
+  const limitPlaceholder = `$${values.length}`;
+
   const result = await database.query(
     `
       SELECT
         rl.launch_id, rl.event_id, rl.name, rl.status, rl.net_precision,
-        rl.image_url,
+        rl.image_url, rl.cached_at,
         e.start_time AS net, e.date_precision,
         m.name AS mission_name, m.mission_type, m.description AS mission_description,
         r.model AS rocket_model, r.manufacture AS rocket_manufacturer,
@@ -60,7 +75,49 @@ async function getCachedLaunches(limit = 20) {
       LEFT JOIN public.launch_statuses ls ON ls.launch_status_id = rl.launch_status_id
       LEFT JOIN public.pads pad ON pad.pad_id = rl.pad_id
       LEFT JOIN public.locations loc ON loc.location_id = pad.location_id
+      ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
       ORDER BY e.start_time ASC
+      LIMIT ${limitPlaceholder}
+    `,
+    values
+  );
+  return result.rows;
+}
+
+/**
+ * Return UPCOMING cached launches (base event start_time >= now), soonest first.
+ * Same projection as getCachedLaunches, just filtered to future launches — used
+ * by the unified events list so past launches don't show up.
+ * @param {number} [limit=200]
+ */
+async function getUpcomingLaunches(limit = 200) {
+  const result = await database.query(
+    `
+      SELECT * FROM (
+        SELECT DISTINCT ON (rl.name, e.start_time)
+          rl.launch_id, rl.event_id, rl.name, rl.status, rl.net_precision,
+          rl.image_url,
+          e.start_time AS net, e.date_precision, e.webcast_live, e.video_url,
+          m.name AS mission_name, m.mission_type, m.description AS mission_description,
+          r.model AS rocket_model,
+          p.name AS provider_name,
+          ls.status AS launch_status,
+          pad.name AS pad_name,
+          loc.name AS pad_location, loc.lat AS pad_lat, loc.long AS pad_lon
+        FROM public.rocket_launch rl
+        JOIN public.events e ON e.event_id = rl.event_id
+        LEFT JOIN public.missions m ON m.mission_id = rl.mission_id
+        LEFT JOIN public.rockets r ON r.rocket_id = rl.rocket_id
+        LEFT JOIN public.providers p ON p.provider_id = rl.provider_id
+        LEFT JOIN public.launch_statuses ls ON ls.launch_status_id = rl.launch_status_id
+        LEFT JOIN public.pads pad ON pad.pad_id = rl.pad_id
+        LEFT JOIN public.locations loc ON loc.location_id = pad.location_id
+        WHERE e.start_time >= now()
+        -- DISTINCT ON collapses launches that got inserted more than once
+        -- (dedup guard was added after some dupes already existed); keep lowest id.
+        ORDER BY rl.name, e.start_time, rl.launch_id
+      ) uniq
+      ORDER BY uniq.net ASC
       LIMIT $1
     `,
     [limit]
@@ -118,8 +175,8 @@ async function saveLaunch(eventData, launchData) {
       `
         INSERT INTO public.rocket_launch
           (event_id, name, status, net_precision, mission_id, rocket_id,
-           provider_id, launch_status_id, pad_id, image_url)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           provider_id, launch_status_id, pad_id, image_url, cached_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
         RETURNING launch_id, event_id
       `,
       [
@@ -144,6 +201,50 @@ async function saveLaunch(eventData, launchData) {
   } finally {
     client.release();
   }
+}
+
+async function refreshLaunchByName(name, eventData, launchData) {
+  const existing = await findLaunchByName(name);
+  if (!existing) return null;
+
+  await database.query(
+    `
+      UPDATE public.events
+      SET start_time = $2,
+          end_time = $3,
+          date_precision = $4,
+          description = $5,
+          image_url = $6
+      WHERE event_id = $1
+    `,
+    [
+      existing.event_id,
+      eventData.startTime,
+      eventData.endTime || null,
+      eventData.datePrecision || null,
+      eventData.description || null,
+      eventData.imageUrl || null,
+    ]
+  );
+
+  await database.query(
+    `
+      UPDATE public.rocket_launch
+      SET status = $2,
+          net_precision = $3,
+          image_url = $4,
+          cached_at = now()
+      WHERE launch_id = $1
+    `,
+    [
+      existing.launch_id,
+      launchData.status || null,
+      launchData.netPrecision || null,
+      launchData.imageUrl || null,
+    ]
+  );
+
+  return existing;
 }
 
 // ---- lookup upserts (all client-aware, SELECT-then-INSERT) ----------------

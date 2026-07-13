@@ -1,5 +1,7 @@
 import type { StyleProp, ViewStyle } from 'react-native';
 
+import type { BestSpot } from '@/lib/map-api';
+
 /**
  * A stargazing location shown on the map. `bortle` is the Bortle dark-sky
  * scale (1 = pristine dark sky, 9 = inner-city light pollution) and drives the
@@ -59,7 +61,19 @@ export interface StarMapProps {
    * Lets the screen lazy-load `launches` instead of fetching on every map view.
    */
   onLaunchesEnable?: () => void;
+  /** Viewing score (0–100) at the user's location; renders a gauge over their pin. */
+  userScore?: number | null;
+  /** Best nearby stargazing spot; renders a pin + gauge with a distance label. */
+  bestSpot?: BestSpot | null;
+  /** Current best-spot search radius (miles) shown on the slider. */
+  radiusMiles?: number;
+  /** Fired as the radius slider moves; presence also toggles the slider on. */
+  onRadiusChange?: (miles: number) => void;
   /** Toggle the light-pollution overlay (web). Defaults to on. */
   showLightPollution?: boolean;
+  /** Render a compact, non-interactive map for dashboard previews. */
+  preview?: boolean;
+  /** Make the full web map occupy most of the viewport. */
+  immersive?: boolean;
   style?: StyleProp<ViewStyle>;
 }

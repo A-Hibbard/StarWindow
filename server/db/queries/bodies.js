@@ -7,7 +7,7 @@
 //     altitude_degrees, azimuth_degrees, distance_from_earth_km, right_ascension,
 //     declination, constellation_id FK, magnitude, elongation, cached_at)
 //   moon_phases(moon_phase_id PK, location_id FK, phase_date, phase_string,
-//     phase_fraction, phase_angle, cached_at)
+//     phase_fraction, phase_angle, image_url, cached_at)
 //
 // NOTE: celestial_bodies / constellations have no declared UNIQUE constraint in
 // the schema, so the upserts below use SELECT-then-INSERT inside a transaction
@@ -32,8 +32,25 @@ module.exports = {
  * with body + constellation names. The service uses the newest cached_at to
  * decide staleness.
  * @param {number} locationId
+ * @param {object} [opts]
+ * @param {string} [opts.fromDate]
+ * @param {string} [opts.toDate]
  */
-async function getCachedBodyPositions(locationId) {
+async function getCachedBodyPositions(locationId, opts = {}) {
+  const { fromDate, toDate } = opts;
+  const values = [locationId];
+  const where = ["bp.location_id = $1"];
+
+  if (fromDate) {
+    values.push(fromDate);
+    where.push(`bp.observed_date >= $${values.length}::date`);
+  }
+
+  if (toDate) {
+    values.push(toDate);
+    where.push(`bp.observed_date < ($${values.length}::date + INTERVAL '1 day')`);
+  }
+
   const result = await database.query(
     `
       SELECT
@@ -56,10 +73,10 @@ async function getCachedBodyPositions(locationId) {
       FROM public.body_positions bp
       JOIN public.celestial_bodies cb ON cb.body_id = bp.body_id
       LEFT JOIN public.constellations c ON c.constellation_id = bp.constellation_id
-      WHERE bp.location_id = $1
+      WHERE ${where.join(" AND ")}
       ORDER BY bp.cached_at DESC, bp.observed_date ASC
     `,
-    [locationId]
+    values
   );
   return result.rows;
 }
@@ -197,17 +214,22 @@ async function upsertConstellation(client, shortName, fullName, cache) {
 // the astronomy service starts populating them — see the TODO in astronomyService.js.
 // ---------------------------------------------------------------------------
 
-async function getCachedMoonPhase(locationId) {
+async function getCachedMoonPhase(locationId, phaseDate) {
+  const values = [locationId];
+  const dateFilter = phaseDate ? "AND phase_date = $2::date" : "";
+  if (phaseDate) values.push(phaseDate);
+
   const result = await database.query(
     `
       SELECT moon_phase_id, location_id, phase_date, phase_string,
-             phase_fraction, phase_angle, cached_at
+             phase_fraction, phase_angle, image_url, cached_at
       FROM public.moon_phases
       WHERE location_id = $1
+        ${dateFilter}
       ORDER BY cached_at DESC
       LIMIT 1
     `,
-    [locationId]
+    values
   );
   return result.rows[0] || null;
 }
@@ -219,21 +241,23 @@ async function getCachedMoonPhase(locationId) {
  * @param {string} data.phaseString
  * @param {number} data.phaseFraction
  * @param {number} data.phaseAngle
+ * @param {string|null} [data.imageUrl]
  * @param {Date|string} [data.cachedAt]
  */
 async function saveMoonPhase(data) {
   const result = await database.query(
     `
       INSERT INTO public.moon_phases
-        (location_id, phase_date, phase_string, phase_fraction, phase_angle, cached_at)
-      VALUES ($1, $2, $3, $4, $5, $6)
+        (location_id, phase_date, phase_string, phase_fraction, phase_angle, image_url, cached_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       ON CONFLICT (location_id, phase_date) DO UPDATE SET
         phase_string   = EXCLUDED.phase_string,
         phase_fraction = EXCLUDED.phase_fraction,
         phase_angle    = EXCLUDED.phase_angle,
+        image_url      = EXCLUDED.image_url,
         cached_at      = EXCLUDED.cached_at
       RETURNING moon_phase_id, location_id, phase_date, phase_string,
-                phase_fraction, phase_angle, cached_at
+                phase_fraction, phase_angle, image_url, cached_at
     `,
     [
       data.locationId,
@@ -241,6 +265,7 @@ async function saveMoonPhase(data) {
       data.phaseString,
       data.phaseFraction,
       data.phaseAngle,
+      data.imageUrl || null,
       data.cachedAt || new Date(),
     ]
   );

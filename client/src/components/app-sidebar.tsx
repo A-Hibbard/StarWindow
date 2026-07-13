@@ -9,7 +9,9 @@ const navItems = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Calendar', href: '/calendar' },
   { label: 'Map', href: '/map' },
+  { label: 'Events', href: '/events' },
   { label: 'Launches', href: '/explore' },
+  { label: 'Profile', href: '/profile' },
 ] as const;
 
 export function AppSidebar() {
