@@ -10,6 +10,12 @@ import { ShootingStar } from '@/components/shooting-star';
 import { getEventIconByType } from '@/lib/event-icons';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 
+type CalendarEventDetails = CalendarEvent & {
+  title: string;
+  time: string;
+  detail: string;
+};
+
 export default function CalendarScreen() {
   const { width } = useWindowDimensions();
   const today = new Date();
@@ -19,7 +25,7 @@ export default function CalendarScreen() {
 /**
  * PLACEHOLDER EVENTS DATA: In a real application, this data would be fetched from an API or database. For demonstration/testing purposes, there are hardcoded events.
  */
-  const Events: CalendarEvent[] = [
+  const Events: CalendarEventDetails[] = [
   {
     id: '1',
     date: 12,
