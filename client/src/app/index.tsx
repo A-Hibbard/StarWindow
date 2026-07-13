@@ -1,1 +1,1 @@
-export { default } from '@/pages/login-screen';
+export { default } from '@/pages/default-dashboard-screen';
