@@ -3,6 +3,7 @@ import { StyleSheet, View, useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AppSidebar } from '@/components/app-sidebar';
+import * as usersService from '@/utilities/users-service';
 
 // export default function TabLayout() {
 //   const colorScheme = useColorScheme();
@@ -17,7 +18,8 @@ import { AppSidebar } from '@/components/app-sidebar';
 export default function RootLayout() {
     const colorScheme = useColorScheme();
     const pathname = usePathname();
-    const showSidebar = pathname !== '/' && pathname !== '/signup';
+    const isLoggedIn = Boolean(usersService.getUser());
+    const showSidebar = isLoggedIn && pathname !== '/' && pathname !== '/signup' && pathname !== '/login';
 
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

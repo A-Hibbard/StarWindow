@@ -457,10 +457,15 @@ function openExternalUrl(url?: string | null) {
   void Linking.openURL(url);
 }
 
-export default function DashboardScreen() {
+type DashboardScreenProps = {
+  locked?: boolean;
+};
+
+export default function DashboardScreen({ locked = false }: DashboardScreenProps = {}) {
   const router = useRouter();
   const today = new Date();
   const [user, setUser] = useState<usersService.AuthUser | null>(() => usersService.getUser());
+  const isLocked = locked && !user;
   const firstName = getFirstName(user);
   const displayName = getDisplayName(user);
   const profileMeta = getProfileMeta(user);
@@ -792,7 +797,7 @@ export default function DashboardScreen() {
     };
   }, []);
 
-  return (
+  const dashboardContent = (
     <SafeAreaView style={styles.app}>
       <View style={styles.starField}>
         {STARS.map((star, i) => (
@@ -826,26 +831,42 @@ export default function DashboardScreen() {
                 }).toUpperCase()}`}
               </Text>
               <Text style={styles.greeting}>
-                {getSkyGreeting(viewingScore, viewingScoreStatus)}, {firstName}
+                {isLocked ? 'Welcome to Star Window' : `${getSkyGreeting(viewingScore, viewingScoreStatus)}, ${firstName}`}
               </Text>
             </View>
-            <View style={styles.locationChip}>
-              <Text style={styles.locationChipText}>📍 {locationLabel}</Text>
-            </View>
+            {isLocked ? (
+              <View style={styles.guestTopActions}>
+                <View style={styles.locationChip}>
+                  <Text style={styles.locationChipText}>📍 {locationLabel}</Text>
+                </View>
+                <Pressable style={styles.topSignInButton} onPress={() => router.push('/login' as any)}>
+                  <Text style={styles.topSignInText}>SIGN IN</Text>
+                </Pressable>
+                <Pressable style={styles.topCreateButton} onPress={() => router.push('/signup' as any)}>
+                  <Text style={styles.topCreateText}>CREATE ACCOUNT</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.locationChip}>
+                <Text style={styles.locationChipText}>📍 {locationLabel}</Text>
+              </View>
+            )}
           </View>
 
 {/*
           <SectionLabel text="ACCOUNT" /> */}
 
-          <Pressable style={styles.profileCard} onPress={() => router.push('/profile')}>
-            <View style={styles.profileRing}>
-              <View style={styles.profileAvatar} />
-            </View>
-            <View style={{ marginLeft: spacing.md }}>
-              <Text style={styles.previewTitle}>{displayName}</Text>
-              <Text style={styles.previewMeta}>{profileMeta}</Text>
-            </View>
-          </Pressable>
+          {!isLocked ? (
+            <Pressable style={styles.profileCard} onPress={() => router.push('/profile')}>
+              <View style={styles.profileRing}>
+                <View style={styles.profileAvatar} />
+              </View>
+              <View style={{ marginLeft: spacing.md }}>
+                <Text style={styles.previewTitle}>{displayName}</Text>
+                <Text style={styles.previewMeta}>{profileMeta}</Text>
+              </View>
+            </Pressable>
+          ) : null}
 
 
           {/* ---------- ISS HERO ---------- */}
@@ -901,6 +922,7 @@ export default function DashboardScreen() {
               meta={calendarMeta}
               thumb={<CalendarThumb events={currentMonthEvents} />}
               onPress={() => router.push('/calendar')}
+              locked={isLocked}
             />
 
             <PreviewCard
@@ -911,6 +933,7 @@ export default function DashboardScreen() {
               meta={browserCoords ? locationLabel : 'Enable location for current sky map'}
               thumb={<MapThumb coords={browserCoords} locationLabel={locationLabel} />}
               onPress={() => router.push('/map')}
+              locked={isLocked}
             />
 
             <PreviewCard
@@ -933,6 +956,7 @@ export default function DashboardScreen() {
               }
               thumb={<LaunchThumb imageUrl={nextLaunch?.image ?? null} />}
               onPress={() => router.push('/explore')}
+              locked={isLocked}
             />
 
             <PreviewCard
@@ -952,6 +976,7 @@ export default function DashboardScreen() {
                 />
 
               }
+              locked={isLocked}
             />
 
             <PreviewCard
@@ -980,6 +1005,7 @@ export default function DashboardScreen() {
                   : formatBodiesMeta(visibleBodies)
               }
               thumb={<BodiesThumb bodies={visibleBodies} isLoading={isBodiesLoading} />}
+              locked={isLocked}
             />
 
             <PreviewCard
@@ -1005,6 +1031,7 @@ export default function DashboardScreen() {
                   : formatSpacewalkMeta(nextSpacewalk)
               }
               thumb={<SpacewalkThumb spacewalk={nextSpacewalk} isLoading={isSpacewalkLoading} />}
+              locked={isLocked}
             />
 
             <PreviewCard
@@ -1031,6 +1058,7 @@ export default function DashboardScreen() {
               }
               thumb={<NewsThumb article={nasaArticle} isLoading={isNewsLoading} />}
               onPress={nasaArticle?.url ? () => openExternalUrl(nasaArticle.url) : undefined}
+              locked={isLocked}
             />
 
             <PreviewCard
@@ -1056,6 +1084,7 @@ export default function DashboardScreen() {
                   : formatWeatherMeta(currentWeather)
               }
               thumb={<WeatherThumb weather={currentWeather} isLoading={isWeatherLoading} />}
+              locked={isLocked}
             />
           </View>
 
@@ -1064,6 +1093,8 @@ export default function DashboardScreen() {
       </View>
     </SafeAreaView>
   );
+
+  return dashboardContent;
 }
 
 /* ---------- small subcomponents ---------- */
@@ -1094,6 +1125,7 @@ function PreviewCard({
   meta,
   thumb,
   onPress,
+  locked = false,
 }: {
   eyebrow: string;
   badge: string;
@@ -1102,10 +1134,27 @@ function PreviewCard({
   meta: string;
   thumb: React.ReactNode;
   onPress?: () => void;
+  locked?: boolean;
 }) {
+  const router = useRouter();
+  const handlePress = locked ? () => router.push('/signup' as any) : onPress;
+
   return (
-    <Pressable style={styles.previewCard} onPress={onPress} disabled={!onPress}>
-      <View style={styles.previewThumb}>{thumb}</View>
+    <Pressable style={styles.previewCard} onPress={handlePress} disabled={!handlePress}>
+      <View style={styles.previewThumb}>
+        <View style={locked ? styles.lockedThumbContent : styles.previewThumbContent}>
+          {thumb}
+        </View>
+        {locked ? (
+          <View style={styles.cardLockOverlay}>
+            <View style={styles.cardLockCircle}>
+              <Text style={styles.cardLockIcon}>🔒</Text>
+            </View>
+            <Text style={styles.cardLockTitle}>ACCOUNT REQUIRED</Text>
+            <Text style={styles.cardLockText}>Tap to create an account</Text>
+          </View>
+        ) : null}
+      </View>
       <View style={styles.previewBody}>
         <View style={styles.previewEyebrowRow}>
           <Text style={styles.previewEyebrow}>{eyebrow}</Text>
@@ -1113,8 +1162,8 @@ function PreviewCard({
             <Text style={[styles.badgeText, { color: badgeColor }]}>{badge}</Text>
           </View>
         </View>
-        <Text style={styles.previewTitle} numberOfLines={2}>{title}</Text>
-        <Text style={styles.previewMeta} numberOfLines={3}>{meta}</Text>
+        <Text style={[styles.previewTitle, locked && styles.lockedPreviewText]} numberOfLines={2}>{title}</Text>
+        <Text style={[styles.previewMeta, locked && styles.lockedPreviewText]} numberOfLines={3}>{meta}</Text>
       </View>
     </Pressable>
   );
@@ -1537,6 +1586,18 @@ function WeatherBar({ label, value }: { label: string; value: number }) {
 /* ---------- styles ---------- */
 
 const styles = StyleSheet.create({
+  guestTopActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' },
+  topSignInButton: { paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: Palette.border, borderRadius: Radius.md },
+  topSignInText: { color: Palette.textSecondary, fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
+  topCreateButton: { paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: Palette.accentMoon, borderRadius: Radius.md },
+  topCreateText: { color: Palette.accentMoon, fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
+  cardLockOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.bgVoid + 'B8' },
+  cardLockCircle: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Palette.accentMoon, borderRadius: 19, backgroundColor: Palette.surfaceRaised, marginBottom: 7 },
+  cardLockIcon: { fontSize: 14 },
+  cardLockTitle: { color: Palette.textPrimary, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
+  cardLockText: { color: Palette.textSecondary, fontSize: 9, marginTop: 3 },
+  lockedThumbContent: { flex: 1, width: '100%', height: '100%', opacity: 0.36, filter: 'blur(6px)' } as any,
+  lockedPreviewText: { opacity: 0.24, filter: 'blur(4px)' } as any,
   app: { flex: 1, backgroundColor: Palette.bgVoid, overflow: 'hidden' },
   starField: {
     position: 'absolute',
@@ -1880,6 +1941,11 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.bgDeep,
     borderBottomWidth: 1,
     borderBottomColor: Palette.borderSoft,
+  },
+  previewThumbContent: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   previewBody: {
     padding: spacing.sm,
