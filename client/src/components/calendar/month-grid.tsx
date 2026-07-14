@@ -1,11 +1,13 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { getEventIconByType } from '@/lib/event-icons';
 import { Spacing } from '@/constants/theme';
 
 export type CalendarEvent = {
   id: string;
   date: number;
+  eventType?: string;
   icon?: string;
 };
 
@@ -108,7 +110,11 @@ export function MonthGrid({
                   <View style={[styles.eventIconsContainer, compact && styles.eventIconsContainerCompact]}>
                     {dayEvents.slice(0, compact ? 1 : 3).map((event) => (
                       <View key={event.id} style={[styles.eventIconBox, compact && styles.eventIconBoxCompact]}>
-                        {!compact && <Text style={styles.eventIcon}>{event.icon ?? 'x'}</Text>}
+                        {!compact && (
+                          <Text style={styles.eventIcon}>
+                            {event.icon ?? getEventIconByType(event.eventType)}
+                          </Text>
+                        )}
                       </View>
                     ))}
                   </View>

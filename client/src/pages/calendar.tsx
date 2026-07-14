@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { Palette, Radius } from '@/constants/tokens';
 import { ThemedView } from '@/components/themed-view';
 import { MonthGrid } from '@/components/calendar/month-grid';
 import { Spacing } from '@/constants/theme';
@@ -107,17 +108,44 @@ export default function CalendarScreen() {
   const selectedDayEvents = getCalendarEventsForDate(events, selectedDate);
   const currentMonthEvents = getCalendarEventsForMonth(events, currentYear, currentMonth);
 
-  //========================================================================
   // Determine if layout should be vertical (mobile) or horizontal (desktop)
-  //========================================================================
   const isVertical = width < 900;
   const monthName = new Date(currentYear, currentMonth).toLocaleDateString('en-US', {
     month: 'long',
     year: 'numeric',
   });
 
+  const STARS = Array.from({ length: 150 }, (_, i) => ({
+    top: (i * 23.7) % 100,
+    left: (i * 41.3) % 100,
+    size: (i % 4) + 0.5,
+    opacity: (i % 6) * 0.08 + 0.15,
+  }));
+
   return (
     <SafeAreaView style={styles.safeArea}>
+      <View style={styles.starField} pointerEvents="none">
+        {STARS.map((star, i) => (
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              top: `${star.top}%` as any,
+              left: `${star.left}%` as any,
+              width: star.size,
+              height: star.size,
+              borderRadius: star.size,
+               backgroundColor: Palette.white,
+              opacity: star.opacity,
+            }}
+          />
+        ))}
+      </View>
+
+      {[0, 800, 1600, 2400, 3200, 4000].map((delay, i) => (
+        <ShootingStar key={i} delay={delay} />
+      ))}
+
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
         {/* ================================================================
             Filter Buttons
@@ -140,9 +168,7 @@ export default function CalendarScreen() {
             ================================================================ */}
         <ThemedView style={styles.frostedContainer}>
           <View style={isVertical ? styles.layoutVertical : styles.layoutHorizontal}>
-            {/* ============================================================
-                Calendar Section (Left)
-                ============================================================ */}
+            {/* Calendar Section (Left) */}
             <ThemedView style={[styles.calendarSection, !isVertical && { flex: 0.7 }]}>
               <View style={styles.monthHeader}>
                 <Pressable
@@ -154,12 +180,14 @@ export default function CalendarScreen() {
                       setCurrentMonth(currentMonth - 1);
                     }
                   }}
-                  style={({ pressed }) => pressed && styles.pressed}>
+                  style={({ pressed }) => [pressed && styles.pressed, styles.headerButton]}>
                   <ThemedText type="small">← Prev</ThemedText>
                 </Pressable>
-                <ThemedText type="title" style={styles.monthTitle}>
-                  {monthName}
-                </ThemedText>
+                <View style={styles.monthHeaderContent} pointerEvents="none">
+                  <ThemedText type="title" style={styles.monthTitle}>
+                    {monthName}
+                  </ThemedText>
+                </View>
                 <Pressable
                   onPress={() => {
                     if (currentMonth === 11) {
@@ -169,7 +197,7 @@ export default function CalendarScreen() {
                       setCurrentMonth(currentMonth + 1);
                     }
                   }}
-                  style={({ pressed }) => pressed && styles.pressed}>
+                  style={({ pressed }) => [pressed && styles.pressed, styles.headerButton]}>
                   <ThemedText type="small">Next →</ThemedText>
                 </Pressable>
               </View>
@@ -183,16 +211,17 @@ export default function CalendarScreen() {
               />
             </ThemedView>
 
-            {/* ============================================================
-                Selected Day Panel (Right)
-                ============================================================ */}
+            {/* Selected Day Panel (Right) */}
             <ThemedView style={[styles.selectedDayPanel, !isVertical && { flex: 0.3 }]}>
-              <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionLabel}>
-                SELECTED DAY
-              </ThemedText>
-              <ThemedText type="title" style={styles.selectedDateText}>
-                {selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-              </ThemedText>
+              <View style={[styles.selectedDayHeader, { zIndex: 99 }]}>
+                <ThemedText type="title" style={styles.selectedDateText}>
+                  {selectedDate.toLocaleDateString('en-US', { 
+                    month: 'long', 
+                    day: 'numeric', 
+                    year: 'numeric' 
+                  })}
+                </ThemedText>
+              </View>
 
               {isLoading ? (
                 <View style={styles.noEventsContainer}>
@@ -216,13 +245,12 @@ export default function CalendarScreen() {
                   </ThemedText>
 
                   <ScrollView
-                    style={styles.eventListContainer}
                     showsVerticalScrollIndicator={true}
                     contentContainerStyle={styles.eventList}>
                     {selectedDayEvents.map((event) => (
                       <ThemedView key={event.id} style={styles.eventCard}>
                         <View style={styles.eventCardIconBox}>
-                          <ThemedText style={styles.eventCardIcon}>{event.icon}</ThemedText>
+                          <ThemedText style={styles.eventCardIcon}>{event.icon ?? getEventIconByType(event.eventType)}</ThemedText>
                         </View>
                         <View style={styles.eventContent}>
                           <ThemedText type="smallBold" style={styles.eventTitle}>
@@ -246,9 +274,6 @@ export default function CalendarScreen() {
                   <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
                     No events detected for this day.
                   </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.shootingStarsPlaceholder}>
-                    [Shooting stars image will appear here]
-                  </ThemedText>
                 </View>
               )}
             </ThemedView>
@@ -262,7 +287,12 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#050814',
+    backgroundColor: Palette.background,
+  },
+  starField: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
   },
   scrollView: {
     flex: 1,
@@ -272,16 +302,13 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
     paddingTop: 120,
   },
-  //==================================================
-  // Frosted Glass Container
-  //==================================================
-  frostedContainer: {
-    marginTop: 24,
-    paddingTop: 16,
+  calendarContainer: {
+    marginTop: Spacing.five,
+    paddingTop: Spacing.five,
     backgroundColor: 'rgba(11, 18, 38, 0.8)',
     backdropFilter: 'blur(14px)',
-    borderRadius: Spacing.five,
-    padding: Spacing.four,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
     borderWidth: 1,
     borderColor: 'rgba(58, 134, 255, 0.25)',
   },
@@ -293,12 +320,11 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     gap: Spacing.four,
   },
-  //==================================================
-  // Calendar Section (Left)
-  //==================================================  cd cl
   calendarSection: {
     backgroundColor: 'rgb(11, 18, 38)',
     gap: Spacing.three,
+    position: 'relative',
+    zIndex: 1,
   },
   monthHeader: {
     flexDirection: 'row',
@@ -307,149 +333,105 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
     paddingBottom: Spacing.two,
     borderBottomWidth: 1,
-    borderBottomColor: '#FFFFFF',
+    borderBottomColor: Palette.borderSoft,
     backgroundColor: 'rgb(11, 18, 38)',
     borderRadius: Spacing.three,
     padding: Spacing.two,
   },
-  monthTitle: {
-    color: '#FFFFFF',
-  },
-  calendarCard: {
-    backgroundColor: 'rgb(11, 18, 38)',
-    gap: 0,
-    width: '100%',
-  },
-  calendarRow: {
-    flexDirection: 'row',
-    marginBottom: 1,
-    gap: 1,
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  dayCell: {
+  monthHeaderContent: {
     flex: 1,
-    minHeight: 130,
-    minWidth: 140,
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    backgroundColor: 'rgba(22, 32, 61, 0.72)',
-    borderRadius: Spacing.three,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    position: 'relative',
-  },
-  dayCellHeader: {
-    backgroundColor: 'transparent',
-    minHeight: 50,
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  dayCellSelected: {
-    backgroundColor: 'rgba(58, 134, 255, 0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(58, 134, 255, 0.55)',
-  },
-  dayCellDisabled: {
-    backgroundColor: 'rgba(15, 20, 32, 0.35)',
-    opacity: 1,
-  },
-  dayCellText: {
-    color: '#B0B4BA',
-  },
-  dayHeaderText: {
-    color: '#A7C4FF',
-    fontWeight: '600',
-  },
-  dayCellSelectedText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  dayCellDisabledText: {
-    color: '#6B7280',
-  },
-  //==================================================
-  // Event Icons in Day Cells
-  //==================================================
-  eventIconsContainer: {
     position: 'absolute',
-    bottom: Spacing.one,
-    left: 0,
-    right: 0,
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: Spacing.half,
-  },
-  dayNumberContainer: {
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-    minHeight: 26,
-    width: '100%',
-  },
-  eventIconBox: {
-    width: 20,
-    height: 20,
-    backgroundColor: '#3A86FF',
-    borderRadius: 3,
-    justifyContent: 'center',
+    left: Spacing.two,
+    right: Spacing.two,
     alignItems: 'center',
   },
-  eventIcon: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: 'bold',
+  monthTitle: {
+    fontWeight: '900',
+    color: Palette.textPrimary,
+    letterSpacing: 4,
+    marginBottom: 4,
+    textShadowColor: Palette.accent,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 14,
   },
   selectedDayPanel: {
-    backgroundColor: 'rgb(11, 18, 38)',
+    backgroundColor: Palette.surface,
     gap: Spacing.three,
+    position: 'relative',
+    zIndex: 3,
+  },
+  selectedDayHeader: {
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: Spacing.one,
+    zIndex: 3,
+    position: 'relative',
+    paddingTop: Spacing.three,
   },
   sectionLabel: {
-    color: '#A7C4FF',
+    fontWeight: '900',
+    color: Palette.textTertiary,
+    letterSpacing: 1,
+    textShadowColor: Palette.accent,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 14,
+    zIndex: 30,
+    position: 'absolute',
+    top: -Spacing.half,
+    left: Spacing.one,
+    backgroundColor: Palette.surface,
+    paddingHorizontal: Spacing.one,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
   },
   selectedDateText: {
-    color: '#FFFFFF',
+    fontWeight: '900',
+    color: Palette.textPrimary,
+    letterSpacing: 4,
+    textShadowColor: Palette.accent,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 14,
+    marginTop: Spacing.three,
+    zIndex: 1,
   },
   eventCount: {
-    color: '#B0B4BA',
-  },
-  eventListContainer: {
-    maxHeight: 500,
+    color: Palette.textSecondary,
+    marginVertical: Spacing.two,
   },
   eventList: {
     gap: Spacing.three,
   },
   eventCard: {
-    backgroundColor: '#10172C',
+    backgroundColor: 'rgba(22, 32, 61, 0.72)',
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.md,
     flexDirection: 'row',
     gap: Spacing.three,
   },
   eventCardIconBox: {
     width: 40,
     height: 40,
-    backgroundColor: '#3A86FF',
-    borderRadius: Spacing.two,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: Palette.accent,
+    borderRadius: Radius.sm,
   },
   eventCardIcon: {
-    color: '#FFFFFF',
+    color: Palette.textPrimary,
     fontSize: 16,
     fontWeight: 'bold',
   },
   eventContent: {
     flex: 1,
-    gap: Spacing.one,
+    gap: Spacing.one, 
   },
   eventTitle: {
-    color: '#FFFFFF',
+    color: Palette.textPrimary,
   },
   eventTime: {
-    color: '#A7C4FF',
+    color: Palette.accent,
   },
   eventDetail: {
-    color: '#B0B4BA',
+    color: Palette.textSecondary,
   },
   noEventsContainer: {
     alignItems: 'center',
@@ -458,30 +440,11 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   noEventsText: {
-    color: '#B0B4BA',
+    color: Palette.textSecondary,
   },
-  shootingStarsPlaceholder: {
-    color: '#6B7280',
-    fontStyle: 'italic',
-  },
-  //==================================================
-  // Filter Buttons Container
-  //==================================================
-  filterButtonsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
+  locationNotice: {
     paddingHorizontal: Spacing.two,
-    marginTop: 20,
-  },
-  categoryPill: {
-    backgroundColor: '#1A2744',
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
-  },
-  categoryText: {
-    color: '#A7C4FF',
+    lineHeight: 18,
   },
   locationNotice: {
     paddingHorizontal: Spacing.two,
@@ -490,5 +453,7 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.7,
   },
+  headerButton: {
+    cursor: 'pointer',
+  },
 });
-
