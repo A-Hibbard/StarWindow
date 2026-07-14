@@ -1,6 +1,6 @@
 import sendRequest from './send-request';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL;
 const NEWS_URL = `${API_BASE}/api/news`;
 
 export type NewsArticle = {

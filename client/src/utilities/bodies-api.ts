@@ -1,6 +1,6 @@
 import sendRequest from './send-request';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL;
 const BODIES_URL = `${API_BASE}/api/astronomy/bodies`;
 
 export type VisibleBody = {

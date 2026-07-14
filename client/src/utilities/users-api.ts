@@ -1,7 +1,7 @@
 import sendRequest from './send-request';
 import type { AuthUser, LoginCredentials, SignUpData } from './users-service';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3005';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL;
 const BASE_URL = `${API_BASE}/api/users`;
 
 export function signUp(userData: SignUpData): Promise<string> {

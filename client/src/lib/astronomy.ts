@@ -1,8 +1,7 @@
 import type { RocketLaunch } from '@/components/star-map';
 
-// Base URL of our Express server. Override per-environment with
-// EXPO_PUBLIC_API_URL (e.g. a deployed server); falls back to local dev.
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3005';
+// Base URL of our Express server. Set per-environment with EXPO_PUBLIC_API_URL.
+const API_BASE = process.env.EXPO_PUBLIC_API_URL;
 
 /** Moon render + phase for a given instant, from GET /api/astronomy/moon. */
 export interface MoonView {

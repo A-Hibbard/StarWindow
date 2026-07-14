@@ -1,6 +1,6 @@
 // Client for the map's best-nearby-spot endpoint (GET /api/map/best-spot).
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3005';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL;
 
 /** The single highest-scoring sample point returned by the search. */
 export interface BestSpot {

@@ -1,6 +1,6 @@
 // Client for the unified events list endpoint (GET /api/events/list).
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3005';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL;
 
 /** Whether an item is a generic space event or a rocket launch. */
 export type EventCategory = 'event' | 'launch';
