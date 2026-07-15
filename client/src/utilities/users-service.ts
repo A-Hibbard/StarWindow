@@ -28,6 +28,7 @@ interface TokenPayload {
 }
 
 let memoryToken: string | null = null;
+const authListeners = new Set<() => void>();
 
 export async function signUp(userData: SignUpData): Promise<AuthUser | null> {
   const token = await usersAPI.signUp(userData);
@@ -81,19 +82,29 @@ export function logOut() {
   setToken(null);
 }
 
+export function subscribeAuthChanges(listener: () => void) {
+  authListeners.add(listener);
+  return () => {
+    authListeners.delete(listener);
+  };
+}
+
 export function checkToken() {
   return usersAPI.checkToken().then((dateStr) => new Date(dateStr));
 }
 
 function setToken(token: string | null) {
   memoryToken = token;
-  if (typeof localStorage === 'undefined') return;
 
-  if (token) {
-    localStorage.setItem('token', token);
-  } else {
-    localStorage.removeItem('token');
+  if (typeof localStorage !== 'undefined') {
+    if (token) {
+      localStorage.setItem('token', token);
+    } else {
+      localStorage.removeItem('token');
+    }
   }
+
+  authListeners.forEach((listener) => listener());
 }
 
 function readToken() {

@@ -1,4 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider, Stack, usePathname } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View, useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
@@ -18,8 +19,27 @@ import * as usersService from '@/utilities/users-service';
 export default function RootLayout() {
     const colorScheme = useColorScheme();
     const pathname = usePathname();
-    const isLoggedIn = Boolean(usersService.getUser());
-    const showSidebar = isLoggedIn && pathname !== '/' && pathname !== '/signup' && pathname !== '/login';
+    const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(usersService.getUser()));
+    const showSidebar = isLoggedIn && pathname !== '/signup' && pathname !== '/login';
+
+    useEffect(() => {
+      const syncAuthState = () => {
+        setIsLoggedIn(Boolean(usersService.getUser()));
+      };
+
+      const unsubscribe = usersService.subscribeAuthChanges(syncAuthState);
+      if (typeof window !== 'undefined') {
+        window.addEventListener('storage', syncAuthState);
+      }
+      syncAuthState();
+
+      return () => {
+        unsubscribe();
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('storage', syncAuthState);
+        }
+      };
+    }, []);
 
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

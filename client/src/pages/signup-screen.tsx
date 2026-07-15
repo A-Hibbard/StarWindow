@@ -381,7 +381,7 @@ export default function SignUpScreen() {
                 </View>
 
                 <TouchableOpacity
-                  onPress={() => router.push('/')}
+                  onPress={() => router.push('/login')}
                   onPressIn={handleNewUserPressIn}
                   onPressOut={handleNewUserPressOut}
                   activeOpacity={1}

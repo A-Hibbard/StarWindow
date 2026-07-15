@@ -4,6 +4,8 @@ const API_BASE = process.env.EXPO_PUBLIC_API_URL;
 const EVENTS_URL = `${API_BASE}/api/events`;
 const LAUNCHES_URL = `${API_BASE}/api/launches`;
 const ASTRONOMY_BODIES_URL = `${API_BASE}/api/astronomy/bodies`;
+const calendarSourceCache = new Map<string, unknown | null>();
+const pendingCalendarSourceRequests = new Map<string, Promise<unknown | null>>();
 
 type RawEvent = {
   id?: number | string;
@@ -327,12 +329,27 @@ async function fetchOptionalCalendarSource<TResponse>(
   url: string,
   label: string
 ): Promise<TResponse | null> {
-  try {
-    return await sendRequest<null, TResponse>(url);
-  } catch (error) {
-    console.warn(`Could not load ${label} calendar data:`, error);
-    return null;
+  if (calendarSourceCache.has(url)) {
+    return calendarSourceCache.get(url) as TResponse | null;
   }
+
+  let pendingRequest = pendingCalendarSourceRequests.get(url);
+  pendingRequest ??= sendRequest<null, TResponse>(url)
+    .then((response) => {
+      calendarSourceCache.set(url, response);
+      return response;
+    })
+    .catch((error) => {
+      console.warn(`Could not load ${label} calendar data:`, error);
+      calendarSourceCache.set(url, null);
+      return null;
+    })
+    .finally(() => {
+      pendingCalendarSourceRequests.delete(url);
+    });
+  pendingCalendarSourceRequests.set(url, pendingRequest);
+
+  return pendingRequest as Promise<TResponse | null>;
 }
 
 function buildCalendarQuery(input?: number | CalendarEventsQuery): Required<Pick<CalendarEventsQuery, 'fromDate' | 'toDate'>> & CalendarEventsQuery {
