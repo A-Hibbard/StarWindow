@@ -182,6 +182,7 @@ const styles = StyleSheet.create({
   dayPressable: {
     flex: 1,
     minWidth: 0,
+    padding: .9,
   },
   dayCell: {
     flex: 1,
