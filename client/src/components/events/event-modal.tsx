@@ -23,7 +23,7 @@ import { LaunchDetailsSection } from '@/components/events/launch-details';
 import { ScoreGauge } from '@/components/events/score-gauge';
 import { fallbackIconSource } from '@/components/events/event-fallback-icon';
 import { formatEventDate } from '@/components/events/event-card';
-import { Palette, Radius } from '@/constants/tokens';
+import { Palette, Radius, alpha } from '@/constants/tokens';
 import {
   checkEventSaved,
   deleteUserEvent,
@@ -36,7 +36,7 @@ import { describeVisibility } from '@/lib/event-visibility';
 import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const LAUNCH_ACCENT = Palette.accentRed;
-const EVENT_ACCENT = Palette.accentMoon;
+const EVENT_ACCENT = Palette.accent;
 
 function openUrl(url: string) {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -354,7 +354,7 @@ export function EventModal({
                 <Text style={styles.note}>Enable location to see your viewing score.</Text>
               ) : scoreLoading ? (
                 <View style={styles.scoreLoading}>
-                  <ActivityIndicator color={Palette.accentMoon} />
+                  <ActivityIndicator color={Palette.accent} />
                 </View>
               ) : score != null ? (
                 <View style={styles.gaugeWrap}>
@@ -434,7 +434,7 @@ export function EventModal({
                           setNoteError(null);
                         }}
                         placeholder="Observation plan, reminder, gear..."
-                        placeholderTextColor={Palette.placeholder}
+                        placeholderTextColor={Palette.textTertiary}
                         multiline
                         textAlignVertical="top"
                         style={styles.noteInput}
@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 2, 8, 0.72)',
+    backgroundColor: alpha(Palette.bgVoid, 0.72),
   },
   center: {
     flex: 1,
@@ -522,10 +522,10 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.surface,
     borderWidth: 1,
     borderColor: Palette.border,
-    borderRadius: Radius.xl,
+    borderRadius: Radius.lg,
     overflow: 'hidden',
     // RN shadow props; react-native-web maps these to box-shadow on web.
-    shadowColor: '#000',
+    shadowColor: Palette.shadow,
     shadowOpacity: 0.6,
     shadowRadius: 30,
     shadowOffset: { width: 0, height: 20 },
@@ -541,7 +541,7 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(1,3,10,0.6)',
+    backgroundColor: alpha(Palette.bgDeep, 0.6),
     borderWidth: 1,
     borderColor: Palette.borderSoft,
   },
@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
   date: {
     fontSize: 14,
     fontWeight: '600',
-    color: Palette.accentMoon,
+    color: Palette.accent,
   },
   location: {
     fontSize: 13,
@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
   },
   note: {
     fontSize: 12.5,
-    color: '#dadada',
+    color: Palette.textSecondary,
     fontStyle: 'italic',
     backgroundColor: Palette.bgDeep,
     borderRadius: Radius.sm,
@@ -646,7 +646,7 @@ const styles = StyleSheet.create({
   watchBtnText: {
     fontSize: 14,
     fontWeight: '700',
-    color: Palette.white,
+    color: Palette.textPrimary,
   },
   liveTag: {
     flexDirection: 'row',
@@ -666,11 +666,11 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     borderWidth: 1,
-    borderColor: Palette.accentMoon,
+    borderColor: Palette.accent,
     borderRadius: Radius.md,
     paddingVertical: 13,
     alignItems: 'center',
-    backgroundColor: Palette.accentMoon + '14',
+    backgroundColor: Palette.accent + '14',
   },
   saveBtnSaved: {
     backgroundColor: Palette.accentGreen + '1A',
@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
   saveBtnText: {
     fontSize: 14,
     fontWeight: '700',
-    color: Palette.accentMoon,
+    color: Palette.accent,
   },
   saveBtnTextSaved: {
     color: Palette.accentGreen,
@@ -701,7 +701,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   noteSectionTitle: {
-    color: Palette.accentMoonDim,
+    color: Palette.accentMuted,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0,
@@ -738,7 +738,7 @@ const styles = StyleSheet.create({
     opacity: 1,
   },
   noteEditIconText: {
-    color: Palette.accentMoon,
+    color: Palette.accent,
     fontSize: 13,
     fontWeight: '900',
     lineHeight: 15,
@@ -746,9 +746,9 @@ const styles = StyleSheet.create({
   noteInput: {
     minHeight: dvh(96),
     borderWidth: 1,
-    borderColor: Palette.inputBorder,
+    borderColor: Palette.border,
     borderRadius: Radius.sm,
-    backgroundColor: Palette.inputBackground,
+    backgroundColor: Palette.surface,
     color: Palette.textPrimary,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -764,7 +764,7 @@ const styles = StyleSheet.create({
   noteButton: {
     minHeight: dvh(38),
     borderRadius: Radius.md,
-    backgroundColor: Palette.accentMoon,
+    backgroundColor: Palette.accent,
     paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
