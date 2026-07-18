@@ -738,7 +738,11 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
 
         setBrowserCoords(coords);
         setLocationLabel(formatCoordinates(coords.latitude, coords.longitude));
-        setLocationMessage('Sky data is based on your current browser location.');
+        setLocationMessage(
+          coords.source === 'ip'
+            ? 'Sky data is based on your approximate IP-based location.'
+            : 'Sky data is based on your current browser location.'
+        );
         void loadMoonPhase(coords);
         void loadViewingScore(coords);
         void loadIssPass(coords);
