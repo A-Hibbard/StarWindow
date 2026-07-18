@@ -112,7 +112,11 @@ export default function CalendarScreen() {
         }
 
         setBrowserCoords(location);
-        setLocationNotice('Visible sky events use your current browser location.');
+        setLocationNotice(
+          location.source === 'ip'
+            ? 'Visible sky events use your approximate IP-based location.'
+            : 'Visible sky events use your current browser location.'
+        );
       } catch {
         if (cancelled) return;
         setBrowserCoords(null);
