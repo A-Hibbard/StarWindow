@@ -58,6 +58,7 @@ export function EventModal({
 }) {
   const isLaunch = event.category === 'launch';
   const accent = isLaunch ? LAUNCH_ACCENT : EVENT_ACCENT;
+  const canSaveEvent = !String(event.event_id).startsWith('dashboard-');
   const fallbackIcon = fallbackIconSource(event);
   const { visible, tooFar, distanceMiles } = describeVisibility(event, userLat, userLon);
   const hasWebcast = Boolean(event.video_url) || event.webcast_live;
@@ -151,7 +152,7 @@ export function EventModal({
 
   // --- seed saved state ---
   useEffect(() => {
-    if (userId == null) return;
+    if (userId == null || !canSaveEvent) return;
     const controller = new AbortController();
     checkEventSaved(userId, event.event_id, controller.signal)
       .then((r) => {
@@ -160,10 +161,10 @@ export function EventModal({
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [userId, event.event_id]);
+  }, [canSaveEvent, userId, event.event_id]);
 
   async function handleSaveToggle() {
-    if (userId == null || saveBusy) return;
+    if (!canSaveEvent || userId == null || saveBusy) return;
     setSaveError(null);
 
     if (!saved) {
@@ -313,13 +314,13 @@ export function EventModal({
                 style={[
                   styles.saveBtn,
                   saved && styles.saveBtnSaved,
-                  (userId == null || saveBusy) && styles.saveBtnDisabled,
+                  (!canSaveEvent || userId == null || saveBusy) && styles.saveBtnDisabled,
                 ]}
                 onPress={handleSaveToggle}
-                disabled={userId == null || saveBusy}
+                disabled={!canSaveEvent || userId == null || saveBusy}
                 aria-label={saved ? 'Remove saved event' : 'Save event'}>
                 <Text style={[styles.saveBtnText, saved && styles.saveBtnTextSaved]}>
-                  {userId == null ? 'Log in to save' : saved ? '✓ Saved' : 'Save event'}
+                  {!canSaveEvent ? 'Dashboard preview' : userId == null ? 'Log in to save' : saved ? '✓ Saved' : 'Save event'}
                 </Text>
               </Pressable>
               {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}

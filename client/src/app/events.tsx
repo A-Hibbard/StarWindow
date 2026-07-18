@@ -14,6 +14,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 
 import { EventCard } from '@/components/events/event-card';
 import { EventModal } from '@/components/events/event-modal';
@@ -24,7 +25,110 @@ import { getUser } from '@/utilities/users-service';
 
 const ALL = 'All';
 
+type EventRouteParams = {
+  eventId?: string | string[];
+  category?: string | string[];
+  type?: string | string[];
+  name?: string | string[];
+  date?: string | string[];
+  datePrecision?: string | string[];
+  description?: string | string[];
+  imageUrl?: string | string[];
+  location?: string | string[];
+  synthetic?: string | string[];
+};
+
+function firstParam(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function normalizeParam(value?: string | null) {
+  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getEventRouteKey(params: EventRouteParams) {
+  return [
+    firstParam(params.eventId),
+    firstParam(params.category),
+    firstParam(params.type),
+    firstParam(params.name),
+    firstParam(params.date),
+    firstParam(params.synthetic),
+  ]
+    .filter(Boolean)
+    .join('|');
+}
+
+function sameEventDate(left?: string | null, right?: string | null) {
+  if (!left || !right) return true;
+  const leftTime = new Date(left).getTime();
+  const rightTime = new Date(right).getTime();
+  if (Number.isNaN(leftTime) || Number.isNaN(rightTime)) return true;
+  return Math.abs(leftTime - rightTime) < 60 * 1000;
+}
+
+function findRequestedEvent(events: EventListItem[], params: EventRouteParams) {
+  const eventId = firstParam(params.eventId);
+  const category = firstParam(params.category);
+  const type = firstParam(params.type);
+  const name = firstParam(params.name);
+  const date = firstParam(params.date);
+  const normalizedName = normalizeParam(name);
+  const normalizedType = normalizeParam(type);
+
+  if (eventId) {
+    const exact = events.find((event) =>
+      String(event.event_id) === eventId ||
+      String(event.id) === eventId
+    );
+    if (exact) return exact;
+  }
+
+  if (normalizedName) {
+    const named = events.find((event) => {
+      const categoryMatches = !category || event.category === category;
+      const nameMatches = normalizeParam(event.name) === normalizedName;
+      return categoryMatches && nameMatches && sameEventDate(event.date, date);
+    });
+    if (named) return named;
+  }
+
+  if (normalizedType) {
+    return events.find((event) => normalizeParam(event.type) === normalizedType) ?? null;
+  }
+
+  return null;
+}
+
+function buildDashboardPreviewEvent(params: EventRouteParams): EventListItem | null {
+  const name = firstParam(params.name);
+  const type = firstParam(params.type) ?? 'Dashboard Preview';
+  if (!name) return null;
+
+  const category = firstParam(params.category) === 'launch' ? 'launch' : 'event';
+
+  return {
+    id: `dashboard-${normalizeParam(type)}-${normalizeParam(name)}`,
+    event_id: `dashboard-${normalizeParam(type)}-${normalizeParam(name)}`,
+    category,
+    name,
+    type,
+    date: firstParam(params.date) ?? null,
+    date_precision: firstParam(params.datePrecision) ?? null,
+    description: firstParam(params.description) ?? null,
+    image_url: firstParam(params.imageUrl) ?? null,
+    location: firstParam(params.location) ?? null,
+    latitude: null,
+    longitude: null,
+    webcast_live: false,
+    video_url: null,
+    launch_details: null,
+  };
+}
+
 export default function EventsScreen() {
+  const routeParams = useLocalSearchParams<EventRouteParams>();
+  const routeEventKey = getEventRouteKey(routeParams);
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +136,7 @@ export default function EventsScreen() {
 
   // Modal + user context (location for the viewing score, user_id for saving).
   const [selectedEvent, setSelectedEvent] = useState<EventListItem | null>(null);
+  const [openedRouteEventKey, setOpenedRouteEventKey] = useState<string | null>(null);
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLon, setUserLon] = useState<number | null>(null);
   const userId = getUser()?.user_id ?? null;
@@ -85,6 +190,23 @@ export default function EventsScreen() {
     if (activeType === ALL) return events;
     return events.filter((e) => e.type === activeType);
   }, [events, activeType]);
+
+  useEffect(() => {
+    if (!routeEventKey || openedRouteEventKey === routeEventKey || loading) return;
+
+    const requestedType = firstParam(routeParams.type);
+    const matchedEvent = findRequestedEvent(events, routeParams);
+    const eventToOpen = matchedEvent ?? buildDashboardPreviewEvent(routeParams);
+
+    if (eventToOpen) {
+      setActiveType(eventToOpen.type);
+      setSelectedEvent(eventToOpen);
+      setOpenedRouteEventKey(routeEventKey);
+    } else if (requestedType) {
+      setActiveType(requestedType);
+      setOpenedRouteEventKey(routeEventKey);
+    }
+  }, [events, loading, openedRouteEventKey, routeEventKey, routeParams]);
 
   // Phase 2: open the detail modal for the clicked event.
   const handleEventClick = (event: EventListItem) => {

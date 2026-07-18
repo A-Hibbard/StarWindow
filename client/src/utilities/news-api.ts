@@ -17,17 +17,14 @@ export type NewsResponse = {
   results?: NewsArticle[];
 };
 
-export async function fetchNasaImageNews({
+export async function fetchNasaNews({
   limit = 1,
-  query = 'space',
 }: {
   limit?: number;
-  query?: string;
 } = {}) {
   const params = new URLSearchParams({
     limit: String(limit),
-    source: 'NASA Images',
-    q: query,
+    source: 'NASA News',
   });
 
   return sendRequest<null, NewsResponse>(`${NEWS_URL}?${params}`);

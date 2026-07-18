@@ -38,7 +38,7 @@ import {
 import { fetchIssPasses, type IssPass } from '@/utilities/iss-api';
 import { fetchNearestLocation } from '@/utilities/location-api';
 import { fetchMoonPhase } from '@/utilities/moon-api';
-import { fetchNasaImageNews, type NewsArticle } from '@/utilities/news-api';
+import { fetchNasaNews, type NewsArticle } from '@/utilities/news-api';
 import { fetchViewingScore } from '@/utilities/viewing-score-api';
 import { fetchCurrentWeather, type WeatherResponse } from '@/utilities/weather-api';
 import { getOrRequestUserLocation } from '@/utilities/user-location-service';
@@ -451,13 +451,13 @@ function formatNewsBadge({
 }) {
   if (isLoading) return 'LOADING';
   if (error) return 'UNAVAILABLE';
-  return article?.source === 'NASA Images' ? 'NASA IMAGE' : 'NASA';
+  return article?.source === 'NASA News' ? 'NASA NEWS' : 'NASA';
 }
 
 function formatNewsMeta(article: NewsArticle | null) {
-  if (!article) return 'No NASA image story found in the current feed.';
+  if (!article) return 'No NASA news article found in the current feed.';
 
-  return [article.source, formatNewsDate(article.published_at)].filter(Boolean).join(' | ') || 'NASA image library';
+  return [article.source, formatNewsDate(article.published_at)].filter(Boolean).join(' | ') || 'NASA news';
 }
 
 function openExternalUrl(url?: string | null) {
@@ -469,6 +469,30 @@ function openExternalUrl(url?: string | null) {
   }
 
   void Linking.openURL(url);
+}
+
+type EventDetailRouteParams = {
+  eventId?: string | number | null;
+  category?: 'event' | 'launch';
+  type?: string | null;
+  name?: string | null;
+  date?: string | null;
+  datePrecision?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  location?: string | null;
+  synthetic?: boolean;
+};
+
+function eventDetailRoute(input: EventDetailRouteParams) {
+  const params: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(input)) {
+    if (value === null || value === undefined || value === '') continue;
+    params[key] = String(value);
+  }
+
+  return { pathname: '/events', params } as const;
 }
 
 type DashboardScreenProps = {
@@ -600,18 +624,18 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
       }
     }
 
-    async function loadNasaImageNews() {
+    async function loadNasaNews() {
       try {
         setIsNewsLoading(true);
         setNewsError(null);
-        const news = await fetchNasaImageNews({ limit: 1, query: 'space station' });
+        const news = await fetchNasaNews({ limit: 1 });
         if (!isMounted) return;
         setNasaArticle(news.results?.[0] ?? null);
       } catch (error) {
-        console.log('NASA image news fetch error:', error);
+        console.log('NASA news fetch error:', error);
         if (isMounted) {
           setNasaArticle(null);
-          setNewsError('Could not load NASA image feed');
+          setNewsError('Could not load NASA news feed');
         }
       } finally {
         if (isMounted) setIsNewsLoading(false);
@@ -619,7 +643,7 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
     }
 
     void loadSpacewalk();
-    void loadNasaImageNews();
+    void loadNasaNews();
 
     return () => {
       isMounted = false;
@@ -933,7 +957,25 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
               title={calendarTitle}
               meta={calendarMeta}
               thumb={<CalendarThumb events={currentMonthEvents} />}
-              onPress={() => router.push('/calendar')}
+              onPress={() => router.push(eventDetailRoute(nextCalendarEvent
+                ? {
+                    eventId: nextCalendarEvent.id,
+                    category: nextCalendarEvent.type?.toLowerCase().includes('launch') ? 'launch' : 'event',
+                    type: nextCalendarEvent.type ?? 'Event',
+                    name: nextCalendarEvent.title,
+                    date: nextCalendarEvent.startDate,
+                    description: nextCalendarEvent.detail,
+                    imageUrl: nextCalendarEvent.imageUrl,
+                    location: nextCalendarEvent.location,
+                  }
+                : {
+                    category: 'event',
+                    type: 'Calendar',
+                    name: calendarTitle,
+                    date: today.toISOString(),
+                    description: calendarMeta,
+                    synthetic: true,
+                  }) as any)}
               locked={isLocked}
             />
 
@@ -944,7 +986,17 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
               title="Your Sky Tonight"
               meta={browserCoords ? locationLabel : 'Enable location for current sky map'}
               thumb={<MapThumb coords={browserCoords} locationLabel={locationLabel} />}
-              onPress={() => router.push('/map')}
+              onPress={() => router.push(eventDetailRoute({
+                category: 'event',
+                type: 'Sky Conditions',
+                name: 'Your Sky Tonight',
+                date: today.toISOString(),
+                description: [locationMessage, getSkyGreeting(viewingScore, viewingScoreStatus)]
+                  .filter(Boolean)
+                  .join(' | '),
+                location: browserCoords ? locationLabel : null,
+                synthetic: true,
+              }) as any)}
               locked={isLocked}
             />
 
@@ -967,7 +1019,17 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
                   : formatLaunchMeta(nextLaunch)
               }
               thumb={<LaunchThumb imageUrl={nextLaunch?.image ?? null} />}
-              onPress={() => router.push('/explore')}
+              onPress={() => router.push(eventDetailRoute({
+                category: 'launch',
+                type: 'Rocket Launch',
+                name: nextLaunch?.name ?? 'Upcoming Launches',
+                date: nextLaunch?.net ?? null,
+                datePrecision: nextLaunch?.net_precision ?? null,
+                description: nextLaunch?.mission?.description ?? formatLaunchMeta(nextLaunch),
+                imageUrl: nextLaunch?.image ?? null,
+                location: nextLaunch?.pad?.location ?? nextLaunch?.pad?.name ?? null,
+                synthetic: true,
+              }) as any)}
               locked={isLocked}
             />
 
@@ -1047,7 +1109,7 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
             />
 
             <PreviewCard
-              eyebrow="NASA IMAGE"
+              eyebrow="NASA NEWS"
               badge={formatNewsBadge({
                 isLoading: isNewsLoading,
                 error: newsError,
@@ -1056,19 +1118,19 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
               badgeColor={Palette.accentMoon}
               title={
                 isNewsLoading
-                  ? 'Loading NASA image...'
+                  ? 'Loading NASA news...'
                   : newsError
-                  ? 'NASA image unavailable'
-                  : nasaArticle?.title ?? 'No NASA image found'
+                  ? 'NASA news unavailable'
+                  : nasaArticle?.title ?? 'No NASA news found'
               }
               meta={
                 isNewsLoading
-                  ? 'Fetching the latest NASA image library item.'
+                  ? 'Fetching the latest NASA news article.'
                   : newsError
                   ? newsError
                   : formatNewsMeta(nasaArticle)
               }
-              thumb={<NewsThumb article={nasaArticle} isLoading={isNewsLoading} />}
+              thumb={<NewsThumb article={nasaArticle} />}
               onPress={nasaArticle?.url ? () => openExternalUrl(nasaArticle.url) : undefined}
               locked={isLocked}
             />
@@ -1535,7 +1597,7 @@ function SpacewalkThumb({
   );
 }
 
-function NewsThumb({ article, isLoading }: { article: NewsArticle | null; isLoading: boolean }) {
+function NewsThumb({ article }: { article: NewsArticle | null }) {
   return (
     <View style={styles.newsThumb}>
       {article?.image_url ? (
@@ -1548,12 +1610,6 @@ function NewsThumb({ article, isLoading }: { article: NewsArticle | null; isLoad
           <Text style={styles.newsFallbackText}>NASA</Text>
         </View>
       )}
-      <View style={styles.newsReadout}>
-        <Text style={styles.tileReadoutLabel}>NASA IMAGE</Text>
-        <Text style={styles.tileReadoutValue} numberOfLines={2}>
-          {isLoading ? 'Loading...' : article?.title ?? 'No image found'}
-        </Text>
-      </View>
     </View>
   );
 }
@@ -2397,18 +2453,6 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     fontWeight: '800',
   },
-  newsReadout: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 10,
-    backgroundColor: Palette.surface + 'E6',
-    borderWidth: 1,
-    borderColor: Palette.borderSoft,
-    borderRadius: Radius.sm,
-    padding: 8,
-  },
-
   weatherThumb: {
     flex: 1,
     backgroundColor: Palette.bgDeep,

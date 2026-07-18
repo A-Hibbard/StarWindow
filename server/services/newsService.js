@@ -17,6 +17,7 @@ const { isCacheStale, TTL_MINUTES } = require("../middleware/cache");
 const NASA_BASE = "https://api.nasa.gov";
 const IMAGES_BASE = "https://images-api.nasa.gov";
 const NASA_RSS = "https://www.nasa.gov/news-release/feed/";
+const NEWS_IMAGE_REQUEST_TIMEOUT_MS = 5000;
 
 /**
  * Get aggregated NASA news.
@@ -29,11 +30,13 @@ const NASA_RSS = "https://www.nasa.gov/news-release/feed/";
  */
 async function getNews({ limit = 20, source = null, imagesQuery = "discovery", forceRefresh = false } = {}) {
   // 1) Cache check across the whole table.
-  const latest = await newsQueries.getLatestCachedAt();
+  const latest = await newsQueries.getLatestCachedAt(source);
   if (!forceRefresh && latest && !isCacheStale(latest, TTL_MINUTES.NEWS)) {
     console.log("\n=== NASA NEWS (cache hit) ===");
     const cached = await newsQueries.getCachedNews({ limit, source });
-    return { count: cached.length, results: cached.map(fromRow) };
+    if (!shouldRefreshCachedNews(cached, source)) {
+      return { count: cached.length, results: cached.map(fromRow) };
+    }
   }
 
   // 2) Fetch every source in parallel; guard each so one failure is non-fatal.
@@ -130,14 +133,16 @@ async function fetchRss() {
   if (!res.ok) throw new Error(`RSS returned ${res.status}`);
   const xml = await res.text();
 
-  return parseRssItems(xml).map((it) => ({
-    title: it.title,
-    summary: stripHtml(it.description),
-    url: it.link,
-    imageUrl: null,
-    publishedAt: it.pubDate ? new Date(it.pubDate).toISOString() : null,
-    source: "NASA News",
-  }));
+  return Promise.all(
+    parseRssItems(xml).map(async (it) => ({
+      title: it.title,
+      summary: stripHtml(it.description),
+      url: it.link,
+      imageUrl: it.imageUrl || await fetchArticleImage(it.link),
+      publishedAt: it.pubDate ? new Date(it.pubDate).toISOString() : null,
+      source: "NASA News",
+    }))
+  );
 }
 
 // --------------------------------------------------------------------------
@@ -184,6 +189,7 @@ function parseRssItems(xml) {
     link: pickTag(block, "link"),
     description: pickTag(block, "description"),
     pubDate: pickTag(block, "pubDate"),
+    imageUrl: pickRssImage(block),
   }));
 }
 
@@ -204,6 +210,91 @@ function stripHtml(s) {
     .replace(/&#8220;|&#8221;/g, '"')
     .trim()
     .slice(0, 2000);
+}
+
+function shouldRefreshCachedNews(rows, source) {
+  return source === "NASA News" && rows.length > 0 && rows.every((row) => !row.image_url);
+}
+
+function pickRssImage(block) {
+  return (
+    pickAttribute(block, "media:content", "url") ||
+    pickAttribute(block, "media:thumbnail", "url") ||
+    pickAttribute(block, "enclosure", "url") ||
+    pickFirstImageFromHtml(pickTag(block, "content:encoded")) ||
+    pickFirstImageFromHtml(pickTag(block, "description"))
+  );
+}
+
+async function fetchArticleImage(url) {
+  if (!url) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), NEWS_IMAGE_REQUEST_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    const html = await res.text();
+    return (
+      pickMetaContent(html, "property", "og:image") ||
+      pickMetaContent(html, "name", "twitter:image") ||
+      pickFirstImageFromHtml(html)
+    );
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function pickAttribute(input, tag, attr) {
+  if (!input) return null;
+  const tagPattern = new RegExp(`<${tag}\\b[^>]*>`, "i");
+  const match = input.match(tagPattern);
+  return match ? pickAttributeFromTag(match[0], attr) : null;
+}
+
+function pickMetaContent(html, key, value) {
+  if (!html) return null;
+  const tags = html.match(/<meta\b[^>]*>/gi) || [];
+  const normalizedValue = value.toLowerCase();
+
+  for (const tag of tags) {
+    if (pickAttributeFromTag(tag, key)?.toLowerCase() === normalizedValue) {
+      return normalizeImageUrl(pickAttributeFromTag(tag, "content"));
+    }
+  }
+
+  return null;
+}
+
+function pickFirstImageFromHtml(html) {
+  if (!html) return null;
+  const imageTag = html.match(/<img\b[^>]*>/i)?.[0];
+  return imageTag ? normalizeImageUrl(pickAttributeFromTag(imageTag, "src")) : null;
+}
+
+function pickAttributeFromTag(tag, attr) {
+  const escapedAttr = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = tag.match(new RegExp(`${escapedAttr}\\s*=\\s*["']([^"']+)["']`, "i"));
+  return match ? decodeHtmlEntities(match[1].trim()) : null;
+}
+
+function normalizeImageUrl(url) {
+  if (!url || url.startsWith("data:")) return null;
+  if (url.startsWith("//")) return `https:${url}`;
+  if (url.startsWith("/")) return new URL(url, "https://www.nasa.gov").toString();
+  return url;
+}
+
+function decodeHtmlEntities(value) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
 }
 
 module.exports = { getNews };
