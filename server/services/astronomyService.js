@@ -22,6 +22,9 @@ const BODY_IMAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const SYNODIC_MONTH_DAYS = 29.530588853;
 const KNOWN_NEW_MOON_UTC = Date.UTC(2000, 0, 6, 18, 14);
 const bodyImageCache = new Map();
+const BODY_IMAGE_URL_OVERRIDES = {
+  pluto: "https://d2pn8kiwq2w21t.cloudfront.net/original_images/jpegPIA19857.jpg",
+};
 const BODY_IMAGE_QUERIES = {
   mercury: "Mercury MESSENGER global view",
   venus: "Venus PIA00104",
@@ -410,6 +413,9 @@ async function getBodyImageUrl(bodyName) {
   if (!query) return null;
 
   const cacheKey = normalizeBodyName(bodyName);
+  const overrideUrl = BODY_IMAGE_URL_OVERRIDES[cacheKey];
+  if (overrideUrl) return overrideUrl;
+
   const cached = bodyImageCache.get(cacheKey);
   if (cached && Date.now() - cached.cachedAt < BODY_IMAGE_CACHE_TTL_MS) {
     return cached.imageUrl;

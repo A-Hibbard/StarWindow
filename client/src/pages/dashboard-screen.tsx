@@ -339,11 +339,24 @@ function getWeatherImageSource(conditions?: string | null) {
   return require('@/assets/images/weather-clouds.png');
 }
 
+function isMoonBody(bodyName?: string | null) {
+  return bodyName?.trim().toLowerCase() === 'moon';
+}
+
 function getTopVisibleBodies(bodies: VisibleBody[]) {
-  return [...bodies]
+  const sortedBodies = [...bodies]
     .filter((body) => body.body)
-    .sort((a, b) => (toNumber(b.altitude_degrees) ?? -Infinity) - (toNumber(a.altitude_degrees) ?? -Infinity))
-    .slice(0, 4);
+    .sort((a, b) => (toNumber(b.altitude_degrees) ?? -Infinity) - (toNumber(a.altitude_degrees) ?? -Infinity));
+
+  if (isMoonBody(sortedBodies[0]?.body)) {
+    const nextBodyIndex = sortedBodies.findIndex((body) => !isMoonBody(body.body));
+    if (nextBodyIndex > 0) {
+      const [nextBody] = sortedBodies.splice(nextBodyIndex, 1);
+      sortedBodies.unshift(nextBody);
+    }
+  }
+
+  return sortedBodies.slice(0, 4);
 }
 
 function formatBodiesBadge({
@@ -1200,7 +1213,7 @@ function MoonThumb({
       <View style={styles.moonThumbRing} />
       <View style={styles.moonThumbDisc}>
         {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.moonImage} resizeMode="cover" />
+          <Image source={{ uri: imageUrl }} style={[styles.moonImage, styles.moonImageFromApi]} resizeMode="cover" />
         ) : (
           <GeneratedMoonPhase
             phaseName={phaseName}
@@ -1445,12 +1458,14 @@ function IssThumb({
 function BodiesThumb({ bodies, isLoading }: { bodies: VisibleBody[]; isLoading: boolean }) {
   const topBodies = getTopVisibleBodies(bodies);
   const primaryBody = topBodies[0] ?? null;
+  const imageUrl = primaryBody?.image_url ?? null;
+  const hasImage = Boolean(imageUrl);
 
   return (
-    <View style={styles.bodiesThumb}>
-      {primaryBody?.image_url ? (
+    <View style={[styles.bodiesThumb, hasImage && styles.bodiesThumbWithImage]}>
+      {hasImage ? (
         <>
-          <Image source={{ uri: primaryBody.image_url }} style={styles.bodiesImage} resizeMode="contain" />
+          <Image source={{ uri: imageUrl ?? '' }} style={styles.bodiesImage} resizeMode="contain" />
           <View style={styles.bodiesImageScrim} />
         </>
       ) : (
@@ -1757,6 +1772,9 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  moonImageFromApi: {
+    transform: [{ scale: 1.18 }],
+  },
   moonLoading: {
     width: '100%',
     height: '100%',
@@ -1882,7 +1900,7 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 48,
     overflow: 'hidden',
-    backgroundColor: Palette.bgDeep,
+    backgroundColor: 'transparent',
     shadowColor: Palette.accentMoon,
     shadowOpacity: 0.36,
     shadowRadius: 22,
@@ -2192,6 +2210,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Palette.bgDeep,
     overflow: 'hidden',
+  },
+  bodiesThumbWithImage: {
+    backgroundColor: '#000000',
   },
   bodiesImage: {
     width: '100%',

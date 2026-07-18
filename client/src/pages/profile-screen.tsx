@@ -28,8 +28,8 @@ const STARS = Array.from({ length: 110 }, (_, i) => ({
 }));
 
 const PROFILE_TABS = [
-  { id: 'edit-profile', label: 'Edit Profile' },
   { id: 'saved-events', label: 'My Saved Events' },
+  { id: 'edit-profile', label: 'Edit Profile' },
 ] as const;
 
 type ProfileTab = (typeof PROFILE_TABS)[number]['id'];
