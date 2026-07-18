@@ -3,8 +3,8 @@
  * `constants/tokens.ts` (Fonts.web) and the *.module.css web chrome.
  *
  * Colors are NOT defined here — the single source of truth for the palette is
- * `src/constants/tokens.ts`. If the NativeWind migration lands (see
- * client/docs/STYLING.md), the palette moves here as CSS variables.
+ * `src/constants/tokens.ts`. If the NativeWind migration ever lands, the
+ * palette moves here as CSS variables.
  */
 
 :root {

@@ -33,8 +33,7 @@ If it exists, use it. If it almost fits, extend it. Only create something new if
   /middleware              ← cache staleness helper (TTL_MINUTES)
   /models                  ← user + eventType query modules (legacy MEN-stack naming; SQL, not ORM)
   /utils                   ← pure helpers, no I/O (geo.js)
-  /docs                    ← schema-guide.json-style schema dump
-  /db/TODO.md              ← schema reconciliation backlog
+  /db/TODO.md              ← schema reconciliation backlog (schema-guide.md was removed upstream 2026-07-18)
 
 /client                    ← Expo SDK 56, TypeScript
   /src/app                 ← expo-router routes; thin re-exports of /src/pages screens
@@ -45,7 +44,6 @@ If it exists, use it. If it almost fits, extend it. Only create something new if
   /src/hooks               ← shared hooks (use-calendar-events, use-theme, use-color-scheme)
   /src/constants           ← tokens.ts — single design-token source (Palette/Radius/Spacing/Breakpoints/Fonts/alpha)
   /src/global.css          ← web font CSS variables only (colors live in tokens.ts)
-  /docs                    ← STYLING.md (NativeWind plan), CSS-TO-TAILWIND.md
 ```
 
 ### What Goes Where
@@ -93,7 +91,7 @@ If it exists, use it. If it almost fits, extend it. Only create something new if
 ### Data & Caching Rules
 - All SQL is parameterized (`$1, $2`) — never string-interpolate values into queries
 - Cache-through pattern is mandatory for external data: check cached rows + `isCacheStale(cachedAt, TTL_MINUTES.X)` before hitting an external API
-- Upserts are conflict-safe: `ON CONFLICT ... DO UPDATE/NOTHING` against the unique constraints listed in `server/docs/schema-guide.md`
+- Upserts are conflict-safe: `ON CONFLICT ... DO UPDATE/NOTHING` against the DB's unique constraints (introspect Supabase directly; the schema-guide dump was removed)
 - Multi-statement writes use a client from the pool with `BEGIN/COMMIT/ROLLBACK` (see `eventType.replaceForUser`)
 - Schema changes go through `server/db/TODO.md` first — the Supabase schema is the source of truth
 
@@ -103,7 +101,8 @@ If it exists, use it. If it almost fits, extend it. Only create something new if
 - Responsive widths compare against `Breakpoints` from `tokens.ts`, via `useWindowDimensions()` (not module-scope `Dimensions.get`)
 - The app is a single fixed dark theme — there is no light/dark switching; `ThemedText`/`ThemedView` render Palette colors directly
 - Platform-specific UI uses paired files: `foo.tsx` (native/shared) + `foo.web.tsx` (web). CSS Modules (`*.module.css`) are allowed **only** inside `*.web.tsx` web-only chrome
-- The NativeWind migration is **deferred by decision (2026-07-18)** — do not install it or use `className` styling on shared components until the user calls for it (plan lives in `client/docs/STYLING.md`)
+- The NativeWind migration is **deferred by decision (2026-07-18)** — do not install it or use `className` styling on shared components until the user calls for it (the old plan docs in `client/docs/` were removed upstream)
+- ⚠️ `utilities/responsive-dimensions.ts` (`dvw()`/`dvh()`, added upstream 2026-07-18) emits CSS `dvw`/`dvh` unit strings — **web-only**; these will not work on native. Follow the existing usage for now, but treat it as a known portability debt (tracked in PROGRESS_TRACKER)
 
 ### No Magic Numbers or Strings
 ```js

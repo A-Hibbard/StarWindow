@@ -20,7 +20,7 @@ The repo is a two-package monorepo — there is no root `package.json`; `client/
 |-------|-----------|
 | Frontend | Expo SDK 56, React 19, React Native 0.85, TypeScript, expo-router (file-based routing) |
 | Web map | Leaflet + react-leaflet (web-only, `*.web.tsx` variants) |
-| Styling | `StyleSheet.create` + design tokens in `client/src/constants/tokens.ts` (NativeWind migration is planned but NOT installed — see `client/docs/STYLING.md`) |
+| Styling | `StyleSheet.create` + design tokens in `client/src/constants/tokens.ts`; web-only `dvw()`/`dvh()` viewport sizing in `utilities/responsive-dimensions.ts` (NativeWind deferred) |
 | Backend | Node.js, Express 5, CommonJS (`require`) |
 | Database | Supabase Postgres via `pg` Pool — raw SQL, no ORM |
 | Auth | JWT (`jsonwebtoken`, 24h expiry) + bcryptjs; token stored client-side in localStorage |
@@ -53,7 +53,10 @@ Server env vars also include: `DATABASE_URL` (Supabase connection string), `SECR
 ### Cache-through data pipeline (the server's core pattern)
 Every external data source follows the same flow:
 `route → service → (db/queries getCached* + isCacheStale(TTL)) → external API if stale → save to Postgres → return`.
-TTLs are centralized in `server/middleware/cache.js` (`TTL_MINUTES`). The DB schema (17 tables: events, rocket_launch, missions, rockets, pads, providers, locations, body_positions, moon_phases, iss_passes, weather, news_articles, users, user_events, user_event_types, plus lookups) is documented in `server/docs/schema-guide.md`; known schema gaps are tracked in `server/db/TODO.md`.
+TTLs are centralized in `server/middleware/cache.js` (`TTL_MINUTES`). The DB schema (17+ tables: events, rocket_launch, missions, rockets, pads, providers, locations, body_positions, moon_phases, iss_passes, weather, news_articles, users, user_events, user_event_types, leveling tables, plus lookups) lives in Supabase — introspect directly (the schema-guide dump was removed upstream); known schema gaps are tracked in `server/db/TODO.md`.
+
+### Leveling (added upstream 2026-07-18)
+Users earn points for actions (e.g. saving events) via `server/db/queries/leveling.js` (`awardUserPoints`/`reverseUserPoints`, idempotent per source key); the client shows level progress via `utilities/level-progress.ts` on the profile/dashboard.
 
 ### Events & launches
 - Unified list endpoint `GET /api/events/list` merges cached space events + rocket launches into one normalized shape (`EventListItem` on the client).
