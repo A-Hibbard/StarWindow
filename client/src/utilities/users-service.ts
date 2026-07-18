@@ -7,6 +7,31 @@ export interface AuthUser {
   l_name: string;
   status_id?: number | null;
   status?: string | null;
+  min_points?: number | null;
+  level?: UserLevelSummary | null;
+}
+
+export interface UserLevelSummary {
+  user_id: number;
+  status_id: number;
+  status: string;
+  total_points: number;
+  current_level_points: number;
+  next_level_points: number | null;
+  points_into_level: number;
+  points_to_next_level: number;
+  updated_at: string | null;
+}
+
+export interface UserPointHistoryItem {
+  user_point_event_history_id: string;
+  user_id: number;
+  action_code: string;
+  display_name: string;
+  points: number;
+  source_type: string;
+  source_key: string;
+  created_at: string;
 }
 
 export interface SignUpData {
@@ -50,10 +75,18 @@ export function getCurrentUser(): Promise<AuthUser> {
   return usersAPI.getCurrentUser();
 }
 
+export function getUserLevel(): Promise<UserLevelSummary> {
+  return usersAPI.getUserLevel();
+}
+
+export function getUserPointHistory(limit?: number): Promise<UserPointHistoryItem[]> {
+  return usersAPI.getUserPointHistory(limit);
+}
+
 export async function updateCurrentUser(userData: Pick<AuthUser, 'f_name' | 'l_name' | 'email'>): Promise<AuthUser | null> {
   const token = await usersAPI.updateCurrentUser(userData);
   setToken(token);
-  return getUser();
+  return getCurrentUser().catch(() => getUser());
 }
 
 export function getUserEventTypes() {

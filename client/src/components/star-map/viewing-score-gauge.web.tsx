@@ -14,19 +14,21 @@ import { Marker } from 'react-leaflet';
 // the map (e.g. the event modal). Re-exported here to preserve this module's
 // original public surface.
 import { gaugeSvgMarkup, scoreColor } from './gauge-svg';
+import { dvw } from '@/utilities/responsive-dimensions';
 export { gaugeSvgMarkup, scoreColor };
 
 // --- divIcon assembly -------------------------------------------------------
-// The whole gauge (backdrop + svg + optional label) floats this many px above
+// The whole gauge (backdrop + svg + optional label) floats this far above
 // the pin coordinate so it clears the marker beneath it.
 const FLOAT_GAP = 14;
 const BOX_W = 62;
-const GAUGE_BOX_H = 40; // backdrop height around the 30px svg
-const LABEL_BOX_H = 30; // extra height when a label is present
+const GAUGE_BOX_H = 40;
+const LABEL_BOX_H = 30;
 
 function buildGaugeIcon(score: number, label?: string, subLabel?: string) {
   const hasLabel = Boolean(label || subLabel);
   const boxH = GAUGE_BOX_H + (hasLabel ? LABEL_BOX_H : 0);
+  const cssBoxWidth = dvw(BOX_W);
 
   const labelHtml = hasLabel
     ? `<div style="margin-top:1px;text-align:center;line-height:1.15;">
@@ -37,7 +39,7 @@ function buildGaugeIcon(score: number, label?: string, subLabel?: string) {
 
   const html = `<div style="
       display:flex;flex-direction:column;align-items:center;
-      width:${BOX_W}px;box-sizing:border-box;
+      width:${cssBoxWidth};box-sizing:border-box;
       padding:3px 4px 4px;
       background:rgba(1,3,10,0.82);
       border:1px solid #0a1828;border-radius:8px;

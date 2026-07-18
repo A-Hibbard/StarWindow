@@ -17,8 +17,10 @@ import { Palette, Radius } from '@/constants/tokens';
 import { fetchSavedUserEvents, type SavedUserEvent } from '@/lib/events-api';
 import * as eventTypesAPI from '@/utilities/event-types-api';
 import type { EventType } from '@/utilities/event-types-api';
+import { getUserLevelProgressLabel, getUserLevelProgressPercent } from '@/utilities/level-progress';
 import { getOrRequestUserLocation } from '@/utilities/user-location-service';
 import * as usersService from '@/utilities/users-service';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const STARS = Array.from({ length: 110 }, (_, i) => ({
   top: (i * 29.3) % 100,
@@ -28,8 +30,8 @@ const STARS = Array.from({ length: 110 }, (_, i) => ({
 }));
 
 const PROFILE_TABS = [
-  { id: 'edit-profile', label: 'Edit Profile' },
   { id: 'saved-events', label: 'My Saved Events' },
+  { id: 'edit-profile', label: 'Edit Profile' },
 ] as const;
 
 type ProfileTab = (typeof PROFILE_TABS)[number]['id'];
@@ -66,6 +68,23 @@ export default function ProfileScreen() {
     if (!usersService.getToken()) router.replace('/');
   }, [router]);
 
+  useEffect(() => {
+    if (!usersService.getToken()) return;
+    let cancelled = false;
+    usersService
+      .getCurrentUser()
+      .then((currentUser) => {
+        if (!cancelled) setUser(currentUser);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const progressLabel = getUserLevelProgressLabel(user);
+  const progressPercent = getUserLevelProgressPercent(user);
+
   return (
     <SafeAreaView style={styles.app}>
       <View style={styles.starField}>
@@ -95,6 +114,14 @@ export default function ProfileScreen() {
             <Text style={styles.eyebrow}>PROFILE</Text>
             <Text style={styles.title}>{getDisplayName(user)}</Text>
             <Text style={styles.subtitle}>{getProfileLevel(user)}</Text>
+            {progressLabel ? (
+              <View style={styles.levelProgress}>
+                <View style={styles.levelTrack}>
+                  <View style={[styles.levelFill, { width: `${progressPercent}%` as any }]} />
+                </View>
+                <Text style={styles.levelMeta}>{progressLabel}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -366,6 +393,16 @@ function MySavedEvents({ user }: { user: usersService.AuthUser | null }) {
   const [userLon, setUserLon] = useState<number | null>(null);
   const hasToken = Boolean(usersService.getToken());
 
+  const handleSavedEventUpdated = (updates: { event_comment?: string | null; event_rating?: number | null }) => {
+    if (!selectedEvent) return;
+    setSelectedEvent((current) => (current ? { ...current, ...updates } : current));
+    setEvents((current) =>
+      current.map((event) =>
+        event.user_event_id === selectedEvent.user_event_id ? { ...event, ...updates } : event
+      )
+    );
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -451,6 +488,7 @@ function MySavedEvents({ user }: { user: usersService.AuthUser | null }) {
         <EventModal
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
+          onSavedEventUpdated={handleSavedEventUpdated}
           userId={user?.user_id ?? null}
           userLat={userLat}
           userLon={userLon}
@@ -543,7 +581,7 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
-    minWidth: 0,
+    minWidth: dvw(0),
   },
   eyebrow: {
     color: Palette.accentMuted,
@@ -562,6 +600,28 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: 6,
   },
+  levelProgress: {
+    marginTop: 10,
+    gap: 6,
+    width: '24dvw' as any,
+  },
+  levelTrack: {
+    height: '0.8dvh' as any,
+    borderRadius: Radius.pill,
+    backgroundColor: Palette.surfaceRaised,
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    overflow: 'hidden',
+  },
+  levelFill: {
+    height: '100%',
+    backgroundColor: Palette.accent,
+  },
+  levelMeta: {
+    color: Palette.textTertiary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   tabBar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -573,7 +633,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   tabButton: {
-    minHeight: 42,
+    minHeight: dvh(42),
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: 'transparent',
@@ -626,7 +686,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    minHeight: 120,
+    minHeight: dvh(120),
   },
   loadingText: {
     color: Palette.textSecondary,
@@ -641,7 +701,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   input: {
-    minHeight: 46,
+    minHeight: dvh(46),
     borderWidth: 1,
     borderColor: Palette.border,
     borderRadius: Radius.sm,
@@ -658,7 +718,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   primaryButton: {
-    minHeight: 44,
+    minHeight: dvh(44),
     borderRadius: Radius.md,
     backgroundColor: Palette.accent,
     paddingHorizontal: 18,
@@ -671,7 +731,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   secondaryButton: {
-    minHeight: 44,
+    minHeight: dvh(44),
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Palette.border,
@@ -701,7 +761,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   preferencePill: {
-    minHeight: 38,
+    minHeight: dvh(38),
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: Palette.border,
@@ -726,7 +786,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyState: {
-    minHeight: 120,
+    minHeight: dvh(120),
     alignItems: 'flex-start',
     justifyContent: 'center',
     gap: 6,

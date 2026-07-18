@@ -5,6 +5,7 @@ import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 
 import { Palette } from '@/constants/tokens';
 import { scheduleOnRN } from 'react-native-worklets';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
 const DURATION = 600;
@@ -116,8 +117,8 @@ const styles = StyleSheet.create({
   },
   image: {
     position: 'absolute',
-    width: 76,
-    height: 71,
+    width: dvw(76),
+    height: dvh(71),
   },
   background: {
     borderRadius: 40,

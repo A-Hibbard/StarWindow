@@ -4,6 +4,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Palette, Radius, alpha } from '@/constants/tokens';
 import * as usersService from '@/utilities/users-service';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard' },
@@ -61,7 +62,7 @@ export function AppSidebar() {
 
 const styles = StyleSheet.create({
   rail: {
-    width: 128,
+    width: dvw(128),
     backgroundColor: Palette.bgDeep,
     borderRightWidth: 1,
     borderRightColor: Palette.borderSoft,
@@ -79,8 +80,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   railTab: {
-    width: 108,
-    height: 44,
+    width: dvw(108),
+    height: dvh(44),
     borderRadius: Radius.md,
     alignItems: 'flex-start',
     justifyContent: 'center',
@@ -94,8 +95,8 @@ const styles = StyleSheet.create({
     left: -10,
     top: '50%',
     marginTop: -10,
-    width: 3,
-    height: 20,
+    width: dvw(3),
+    height: dvh(20),
     backgroundColor: Palette.accent,
     borderRadius: 3,
   },

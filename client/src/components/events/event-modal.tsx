@@ -14,6 +14,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
@@ -28,9 +29,11 @@ import {
   deleteUserEvent,
   fetchViewingScore,
   saveUserEvent,
+  updateSavedUserEvent,
   type EventListItem,
 } from '@/lib/events-api';
 import { describeVisibility } from '@/lib/event-visibility';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const LAUNCH_ACCENT = Palette.accentRed;
 const EVENT_ACCENT = Palette.accent;
@@ -46,18 +49,21 @@ function openUrl(url: string) {
 export function EventModal({
   event,
   onClose,
+  onSavedEventUpdated,
   userId,
   userLat,
   userLon,
 }: {
   event: EventListItem;
   onClose: () => void;
+  onSavedEventUpdated?: (updates: { event_comment?: string | null; event_rating?: number | null }) => void;
   userId: number | null;
   userLat: number | null;
   userLon: number | null;
 }) {
   const isLaunch = event.category === 'launch';
   const accent = isLaunch ? LAUNCH_ACCENT : EVENT_ACCENT;
+  const canSaveEvent = !String(event.event_id).startsWith('dashboard-');
   const fallbackIcon = fallbackIconSource(event);
   const { visible, tooFar, distanceMiles } = describeVisibility(event, userLat, userLon);
   const hasWebcast = Boolean(event.video_url) || event.webcast_live;
@@ -73,6 +79,13 @@ export function EventModal({
   const [savedId, setSavedId] = useState<string | null>(null);
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [note, setNote] = useState(() => getSavedEventNote(event));
+  const [savedNote, setSavedNote] = useState(() => getSavedEventNote(event));
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [noteMessage, setNoteMessage] = useState<string | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [noteEditing, setNoteEditing] = useState(() => !normalizeNote(getSavedEventNote(event)));
+  const [noteHovered, setNoteHovered] = useState(false);
 
   // --- enter animation (fade + scale) ---
   const anim = useRef(new Animated.Value(0)).current;
@@ -151,19 +164,33 @@ export function EventModal({
 
   // --- seed saved state ---
   useEffect(() => {
-    if (userId == null) return;
+    if (userId == null || !canSaveEvent) return;
     const controller = new AbortController();
-    checkEventSaved(userId, event.event_id, controller.signal)
+    checkEventSaved(event.event_id, controller.signal)
       .then((r) => {
         setSaved(r.saved);
         setSavedId(r.user_event_id);
+        setNote(r.event_comment ?? '');
+        setSavedNote(r.event_comment ?? '');
+        setNoteEditing(!normalizeNote(r.event_comment));
+        setNoteHovered(false);
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [userId, event.event_id]);
+  }, [canSaveEvent, userId, event.event_id]);
+
+  useEffect(() => {
+    const currentNote = getSavedEventNote(event);
+    setNote(currentNote);
+    setSavedNote(currentNote);
+    setNoteEditing(!normalizeNote(currentNote));
+    setNoteHovered(false);
+    setNoteMessage(null);
+    setNoteError(null);
+  }, [event]);
 
   async function handleSaveToggle() {
-    if (userId == null || saveBusy) return;
+    if (!canSaveEvent || userId == null || saveBusy) return;
     setSaveError(null);
 
     if (!saved) {
@@ -171,7 +198,7 @@ export function EventModal({
       setSaved(true);
       setSaveBusy(true);
       try {
-        const res = await saveUserEvent(userId, event.event_id);
+        const res = await saveUserEvent(event.event_id);
         setSavedId(res.user_event_id);
       } catch {
         setSaved(false); // rollback
@@ -187,12 +214,65 @@ export function EventModal({
       try {
         if (prevId) await deleteUserEvent(prevId);
         setSavedId(null);
+        setNote('');
+        setSavedNote('');
+        onSavedEventUpdated?.({ event_comment: null });
       } catch {
         setSaved(true); // rollback
         setSaveError('Could not remove. Try again.');
       } finally {
         setSaveBusy(false);
       }
+    }
+  }
+
+  async function handleSaveNote() {
+    if (!savedId || noteBusy) return;
+    setNoteBusy(true);
+    setNoteError(null);
+    setNoteMessage(null);
+
+    const nextNote = normalizeNote(note);
+    try {
+      const updated = await updateSavedUserEvent(savedId, { event_comment: nextNote });
+      const updatedNote = updated.event_comment ?? '';
+      setNote(updatedNote);
+      setSavedNote(updatedNote);
+      setNoteMessage('Comment saved.');
+      setNoteEditing(!updatedNote);
+      setNoteHovered(false);
+      onSavedEventUpdated?.({ event_comment: updated.event_comment });
+    } catch {
+      setNoteError('Could not save note.');
+    } finally {
+      setNoteBusy(false);
+    }
+  }
+
+  async function handleClearNote() {
+    await handleSaveNoteWithValue(null);
+  }
+
+  async function handleSaveNoteWithValue(value: string | null) {
+    if (!savedId || noteBusy) return;
+    setNoteBusy(true);
+    setNoteError(null);
+    setNoteMessage(null);
+
+    try {
+      const updated = await updateSavedUserEvent(savedId, { event_comment: value });
+      const updatedNote = updated.event_comment ?? '';
+      setNote(updatedNote);
+      setSavedNote(updatedNote);
+      setNoteMessage(value ? 'Comment saved.' : 'Comment cleared.');
+      setNoteEditing(!updatedNote);
+      setNoteHovered(false);
+      onSavedEventUpdated?.({ event_comment: updated.event_comment });
+    } catch {
+      setNote(savedNote);
+      setNoteError('Could not update note.');
+    } finally {
+      setNoteBusy(false);
     }
   }
 
@@ -313,22 +393,96 @@ export function EventModal({
                 style={[
                   styles.saveBtn,
                   saved && styles.saveBtnSaved,
-                  (userId == null || saveBusy) && styles.saveBtnDisabled,
+                  (!canSaveEvent || userId == null || saveBusy) && styles.saveBtnDisabled,
                 ]}
                 onPress={handleSaveToggle}
-                disabled={userId == null || saveBusy}
+                disabled={!canSaveEvent || userId == null || saveBusy}
                 aria-label={saved ? 'Remove saved event' : 'Save event'}>
                 <Text style={[styles.saveBtnText, saved && styles.saveBtnTextSaved]}>
-                  {userId == null ? 'Log in to save' : saved ? '✓ Saved' : 'Save event'}
+                  {!canSaveEvent ? 'Dashboard preview' : userId == null ? 'Log in to save' : saved ? '✓ Saved' : 'Save event'}
                 </Text>
               </Pressable>
               {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}
+
+              {saved && savedId ? (
+                <View style={styles.noteSection}>
+                  <Text style={styles.noteSectionTitle}>PRIVATE COMMENT</Text>
+                  {normalizeNote(savedNote) && !noteEditing ? (
+                    <Pressable
+                      onHoverIn={() => setNoteHovered(true)}
+                      onHoverOut={() => setNoteHovered(false)}
+                      onPress={() => setNoteEditing(true)}
+                      style={styles.savedNoteBox}
+                      aria-label="Edit private comment">
+                      <Text style={styles.savedNoteText}>{savedNote}</Text>
+                      <View
+                        pointerEvents="none"
+                        style={[
+                          styles.noteEditIcon,
+                          (noteHovered || Platform.OS !== 'web') && styles.noteEditIconVisible,
+                        ]}>
+                        <Text style={styles.noteEditIconText}>✎</Text>
+                      </View>
+                    </Pressable>
+                  ) : (
+                    <>
+                      <TextInput
+                        value={note}
+                        onChangeText={(value) => {
+                          setNote(value);
+                          setNoteMessage(null);
+                          setNoteError(null);
+                        }}
+                        placeholder="Observation plan, reminder, gear..."
+                        placeholderTextColor={Palette.textTertiary}
+                        multiline
+                        textAlignVertical="top"
+                        style={styles.noteInput}
+                        editable={!noteBusy}
+                      />
+                      <View style={styles.noteActions}>
+                        <Pressable
+                          onPress={handleSaveNote}
+                          disabled={noteBusy || normalizeNote(note) === normalizeNote(savedNote)}
+                          style={[
+                            styles.noteButton,
+                            (noteBusy || normalizeNote(note) === normalizeNote(savedNote)) && styles.noteButtonDisabled,
+                          ]}>
+                          <Text style={styles.noteButtonText}>{noteBusy ? 'SAVING...' : 'SAVE COMMENT'}</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={handleClearNote}
+                          disabled={noteBusy || (!normalizeNote(note) && !normalizeNote(savedNote))}
+                          style={[
+                            styles.noteSecondaryButton,
+                            (noteBusy || (!normalizeNote(note) && !normalizeNote(savedNote))) && styles.noteButtonDisabled,
+                          ]}>
+                          <Text style={styles.noteSecondaryButtonText}>CLEAR</Text>
+                        </Pressable>
+                      </View>
+                    </>
+                  )}
+                  {noteMessage ? <Text style={styles.noteSuccess}>{noteMessage}</Text> : null}
+                  {noteError ? <Text style={styles.noteError}>{noteError}</Text> : null}
+                </View>
+              ) : null}
             </ScrollView>
           </View>
         </Animated.View>
       </View>
     </View>
   );
+}
+
+function getSavedEventNote(event: EventListItem): string {
+  return 'event_comment' in event && typeof event.event_comment === 'string'
+    ? event.event_comment
+    : '';
+}
+
+function normalizeNote(value: string | null) {
+  const trimmed = String(value ?? '').trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 const styles = StyleSheet.create({
@@ -356,7 +510,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: dvw(560),
     maxHeight: '90%',
   },
   dialog: {
@@ -364,7 +518,7 @@ const styles = StyleSheet.create({
     // clip, which is what gives the inner ScrollView a bounded height to scroll
     // within. Without this the content just overflows and can't be reached.
     flex: 1,
-    minHeight: 0,
+    minHeight: dvh(0),
     backgroundColor: Palette.surface,
     borderWidth: 1,
     borderColor: Palette.border,
@@ -401,14 +555,14 @@ const styles = StyleSheet.create({
     // Fill the bounded dialog and scroll when content exceeds it. minHeight:0 is
     // required on web so this flex item can shrink below its content height.
     flex: 1,
-    minHeight: 0,
+    minHeight: dvh(0),
   },
   scrollContent: {
     padding: 20,
     gap: 12,
   },
   hero: {
-    height: 200,
+    height: dvh(200),
     borderRadius: Radius.md,
     overflow: 'hidden',
     backgroundColor: Palette.bgDeep,
@@ -537,5 +691,114 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Palette.accentRed,
     textAlign: 'center',
+  },
+  noteSection: {
+    backgroundColor: Palette.bgDeep,
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.md,
+    padding: 12,
+    gap: 10,
+  },
+  noteSectionTitle: {
+    color: Palette.accentMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  savedNoteBox: {
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.sm,
+    backgroundColor: Palette.surfaceRaised,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingRight: 42,
+  },
+  savedNoteText: {
+    color: Palette.textPrimary,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+  },
+  noteEditIcon: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    borderRadius: Radius.pill,
+    backgroundColor: Palette.bgDeep,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    opacity: 0,
+  },
+  noteEditIconVisible: {
+    opacity: 1,
+  },
+  noteEditIconText: {
+    color: Palette.accent,
+    fontSize: 13,
+    fontWeight: '900',
+    lineHeight: 15,
+  },
+  noteInput: {
+    minHeight: dvh(96),
+    borderWidth: 1,
+    borderColor: Palette.border,
+    borderRadius: Radius.sm,
+    backgroundColor: Palette.surface,
+    color: Palette.textPrimary,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
+    outlineStyle: 'none' as any,
+  },
+  noteActions: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  noteButton: {
+    minHeight: dvh(38),
+    borderRadius: Radius.md,
+    backgroundColor: Palette.accent,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noteSecondaryButton: {
+    minHeight: dvh(38),
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noteButtonDisabled: {
+    opacity: 0.45,
+  },
+  noteButtonText: {
+    color: Palette.bgVoid,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  noteSecondaryButtonText: {
+    color: Palette.textSecondary,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  noteSuccess: {
+    color: Palette.accentGreen,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  noteError: {
+    color: Palette.accentRed,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

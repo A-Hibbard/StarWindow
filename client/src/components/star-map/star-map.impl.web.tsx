@@ -19,6 +19,7 @@ import { ViewingScoreGauge } from './viewing-score-gauge.web';
 
 import 'leaflet/dist/leaflet.css';
 import classes from './star-map.module.css';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 // Radius slider bounds (miles) — mirrors bestSpotService on the server.
 const MIN_RADIUS = 5;
@@ -408,7 +409,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   panelCard: {
-    minWidth: 190,
+    minWidth: dvw(190),
     backgroundColor: Palette.bgDeep,
     borderRadius: Radius.sm,
     borderWidth: 1,
@@ -438,8 +439,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   pill: {
-    width: 34,
-    height: 18,
+    width: dvw(34),
+    height: dvh(18),
     borderRadius: 9,
     backgroundColor: Palette.surface,
     borderWidth: 1,
@@ -465,7 +466,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 24,
     left: 12,
-    width: 200,
+    width: dvw(200),
     backgroundColor: Palette.bgDeep,
     borderRadius: Radius.sm,
     borderWidth: 1,

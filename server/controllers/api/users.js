@@ -1,5 +1,6 @@
 const User = require('../../models/user');
 const EventType = require('../../models/eventType');
+const levelingQueries = require('../../db/queries/leveling');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
@@ -11,6 +12,8 @@ module.exports = {
   checkToken,
   getEventTypes,
   updateEventTypes,
+  getLevelSummary,
+  getPointHistory,
 };
 
 async function create(req, res) {
@@ -45,7 +48,8 @@ async function me(req, res) {
   try {
     const user = await User.findById(req.user.user_id);
     if (!user) return res.status(404).json({ error: "User not found" });
-    res.json(user);
+    const level = await levelingQueries.getUserLevelSummary(req.user.user_id);
+    res.json({ ...user, level });
   } catch (err) {
     console.error("GET /api/users/me failed:", err);
     res.status(400).json({ error: err.message, code: err.code });
@@ -87,6 +91,25 @@ async function updateEventTypes(req, res) {
   }
 }
 
+async function getLevelSummary(req, res) {
+  try {
+    const level = await levelingQueries.getUserLevelSummary(req.user.user_id);
+    if (!level) return res.status(404).json({ error: "User level not found" });
+    res.json(level);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+async function getPointHistory(req, res) {
+  try {
+    const history = await levelingQueries.getUserPointHistory(req.user.user_id, req.query.limit);
+    res.json(history);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
 function createJWT(user) {
   return jwt.sign(
     {
@@ -97,6 +120,7 @@ function createJWT(user) {
         l_name: user.l_name,
         status_id: user.status_id,
         status: user.status,
+        min_points: user.min_points,
       },
     },
     process.env.SECRET,

@@ -16,6 +16,7 @@ import { SoundToggle } from '@/components/sound-toggle';
 import { Palette, Radius } from '@/constants/tokens';
 import * as ambientSound from '@/utilities/ambient-sound-service';
 import * as usersService from '@/utilities/users-service';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const getScreen = () => Dimensions.get('window');
 
@@ -239,7 +240,7 @@ const styles = StyleSheet.create({
   },
   centerWrapper: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: dvw(420),
     maxHeight: '100%',
     alignItems: 'center',
     justifyContent: 'center',
@@ -323,7 +324,7 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    height: 1,
+    height: dvh(1),
     backgroundColor: Palette.border,
   },
   dividerText: {

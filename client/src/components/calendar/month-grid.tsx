@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getEventIconByType } from '@/lib/event-icons';
 import { Palette, Radius, Spacing, alpha } from '@/constants/tokens';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 export type CalendarEvent = {
   id: string;
@@ -181,12 +182,12 @@ const styles = StyleSheet.create({
   },
   dayPressable: {
     flex: 1,
-    minWidth: 0,
+    minWidth: dvw(0),
   },
   dayCell: {
     flex: 1,
-    minHeight: 130,
-    minWidth: 0,
+    minHeight: dvh(130),
+    minWidth: dvw(0),
     width: '100%',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -198,7 +199,7 @@ const styles = StyleSheet.create({
   },
   dayCellCompact: {
     minHeight: '2dvh' as any,
-    minWidth: 0,
+    minWidth: dvw(0),
     borderRadius: 4,
     paddingHorizontal: 0,
     paddingVertical: 2,
@@ -207,7 +208,7 @@ const styles = StyleSheet.create({
   },
   dayCellHeader: {
     backgroundColor: 'transparent',
-    minHeight: 50,
+    minHeight: dvh(50),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -223,13 +224,13 @@ const styles = StyleSheet.create({
   dayNumberContainer: {
     alignItems: 'flex-start',
     justifyContent: 'flex-start',
-    minHeight: 26,
+    minHeight: dvh(26),
     width: '100%',
   },
   dayNumberContainerCompact: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 0,
+    minHeight: dvh(0),
   },
   dayCellText: {
     color: Palette.textSecondary,
