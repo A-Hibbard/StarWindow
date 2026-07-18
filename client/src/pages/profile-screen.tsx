@@ -393,6 +393,16 @@ function MySavedEvents({ user }: { user: usersService.AuthUser | null }) {
   const [userLon, setUserLon] = useState<number | null>(null);
   const hasToken = Boolean(usersService.getToken());
 
+  const handleSavedEventUpdated = (updates: { event_comment?: string | null; event_rating?: number | null }) => {
+    if (!selectedEvent) return;
+    setSelectedEvent((current) => (current ? { ...current, ...updates } : current));
+    setEvents((current) =>
+      current.map((event) =>
+        event.user_event_id === selectedEvent.user_event_id ? { ...event, ...updates } : event
+      )
+    );
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -478,6 +488,7 @@ function MySavedEvents({ user }: { user: usersService.AuthUser | null }) {
         <EventModal
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
+          onSavedEventUpdated={handleSavedEventUpdated}
           userId={user?.user_id ?? null}
           userLat={userLat}
           userLon={userLon}

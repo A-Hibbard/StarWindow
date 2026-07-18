@@ -7,16 +7,21 @@ const userEventQueries = require("../../db/queries/userEvents");
 // global checkToken middleware also decodes the JWT into req.user, so a stricter
 // version could use `req.user.user_id` and ignore the body — left as a follow-up.
 
-// GET /api/user-events?user_id=&event_id=
+// GET /api/user-events?event_id=
 // Report whether a user has already saved an event (seeds the modal's state).
-router.get("/", async (req, res) => {
-  const { user_id, event_id } = req.query;
-  if (!user_id || !event_id) {
-    return res.status(400).json({ error: "user_id and event_id are required", status: 400 });
+router.get("/", ensureLoggedIn, async (req, res) => {
+  const { event_id } = req.query;
+  if (!event_id) {
+    return res.status(400).json({ error: "event_id is required", status: 400 });
   }
   try {
-    const row = await userEventQueries.getUserEvent(Number(user_id), event_id);
-    res.json({ saved: Boolean(row), user_event_id: row?.user_event_id ?? null });
+    const row = await userEventQueries.getUserEvent(req.user.user_id, event_id);
+    res.json({
+      saved: Boolean(row),
+      user_event_id: row?.user_event_id ?? null,
+      event_comment: row?.event_comment ?? null,
+      event_rating: row?.event_rating ?? null,
+    });
   } catch (error) {
     const status = error.status || 500;
     res.status(status).json({ error: error.message, status });

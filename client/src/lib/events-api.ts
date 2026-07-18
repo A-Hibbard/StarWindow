@@ -133,14 +133,21 @@ export async function fetchViewingScore(
 
 /** Whether a user has already saved an event (GET /api/user-events). */
 export async function checkEventSaved(
-  userId: number,
   eventId: number | string,
   signal?: AbortSignal
-): Promise<{ saved: boolean; user_event_id: string | null }> {
-  const params = new URLSearchParams({ user_id: String(userId), event_id: String(eventId) });
-  const res = await fetch(`${API_BASE}/api/user-events?${params}`, { signal });
-  if (!res.ok) throw new Error(`saved-check failed: ${res.status}`);
-  return res.json();
+): Promise<{
+  saved: boolean;
+  user_event_id: string | null;
+  event_comment: string | null;
+  event_rating: number | null;
+}> {
+  const params = new URLSearchParams({ event_id: String(eventId) });
+  return sendRequest<null, {
+    saved: boolean;
+    user_event_id: string | null;
+    event_comment: string | null;
+    event_rating: number | null;
+  }>(`${API_BASE}/api/user-events?${params}`, 'GET', null, { signal });
 }
 
 /** Save an event for a user (POST /api/user-events). Idempotent server-side. */
