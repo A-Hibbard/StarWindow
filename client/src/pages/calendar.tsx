@@ -1,19 +1,29 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import * as Location from 'expo-location';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { MonthGrid } from '@/components/calendar/month-grid';
 import { ShootingStar } from '@/components/shooting-star';
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Palette } from '@/constants/tokens';
 import { ThemedView } from '@/components/themed-view';
-import { MonthGrid } from '@/components/calendar/month-grid';
+import { Radius, Palette } from '@/constants/tokens';
 import { Spacing } from '@/constants/theme';
 import { useCalendarEvents } from '@/hooks/use-calendar-events';
-import { getCalendarEventsForDate, getCalendarEventsForMonth } from '@/utilities/events-api';
 import { getEventIconByType } from '@/lib/event-icons';
+import { getCalendarEventsForDate, getCalendarEventsForMonth } from '@/utilities/events-api';
 
-const MONTHS_BEHIND_TO_FETCH = 2;
-const MONTHS_AHEAD_TO_FETCH = 3;
+const categories = ['Meteor Showers', 'Rocket Launches', 'Alignments', 'More Filters'];
+const MONTHS_BEHIND_TO_FETCH = 1;
+const MONTHS_AHEAD_TO_FETCH = 1;
+const CALENDAR_GRID_MAX_HEIGHT = 840;
+const STARS = Array.from({ length: 72 }, (_, i) => ({
+  top: (i * 23.7) % 100,
+  left: (i * 41.3) % 100,
+  size: (i % 4) + 0.5,
+  opacity: (i % 6) * 0.08 + 0.15,
+}));
+const SHOOTING_STAR_DELAYS = [0, 2400];
 
 function formatDateForApi(date: Date) {
   const year = date.getFullYear();
@@ -30,13 +40,51 @@ function getCalendarFetchWindow(year: number, month: number) {
   const from = new Date(year, month - MONTHS_BEHIND_TO_FETCH, 1);
   const to = new Date(year, month + MONTHS_AHEAD_TO_FETCH + 1, 0);
 
+  return getCalendarFetchWindowFromIndexes(
+    getMonthIndex(from.getFullYear(), from.getMonth()),
+    getMonthIndex(to.getFullYear(), to.getMonth())
+  );
+}
+
+function getCalendarFetchWindowFromIndexes(startMonthIndex: number, endMonthIndex: number) {
+  const from = new Date(Math.floor(startMonthIndex / 12), startMonthIndex % 12, 1);
+  const to = new Date(Math.floor(endMonthIndex / 12), (endMonthIndex % 12) + 1, 0);
+
   return {
     fromDate: formatDateForApi(from),
     toDate: formatDateForApi(to),
-    startMonthIndex: getMonthIndex(from.getFullYear(), from.getMonth()),
-    endMonthIndex: getMonthIndex(to.getFullYear(), to.getMonth()),
+    startMonthIndex,
+    endMonthIndex,
   };
 }
+
+const CalendarBackdrop = memo(function CalendarBackdrop() {
+  return (
+    <>
+      <View style={styles.starField} pointerEvents="none">
+        {STARS.map((star, i) => (
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              top: `${star.top}%` as any,
+              left: `${star.left}%` as any,
+              width: star.size,
+              height: star.size,
+              borderRadius: star.size,
+              backgroundColor: Palette.white,
+              opacity: star.opacity,
+            }}
+          />
+        ))}
+      </View>
+
+      {SHOOTING_STAR_DELAYS.map((delay, i) => (
+        <ShootingStar key={i} delay={delay} glow={false} />
+      ))}
+    </>
+  );
+});
 
 export default function CalendarScreen() {
   const { width } = useWindowDimensions();
@@ -49,16 +97,6 @@ export default function CalendarScreen() {
   );
   const [browserCoords, setBrowserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationNotice, setLocationNotice] = useState('Requesting browser location for visible sky events.');
-
-  useEffect(() => {
-    const currentMonthIndex = getMonthIndex(currentYear, currentMonth);
-    if (
-      currentMonthIndex <= loadedWindow.startMonthIndex ||
-      currentMonthIndex >= loadedWindow.endMonthIndex
-    ) {
-      setLoadedWindow(getCalendarFetchWindow(currentYear, currentMonth));
-    }
-  }, [currentMonth, currentYear, loadedWindow.endMonthIndex, loadedWindow.startMonthIndex]);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,71 +140,84 @@ export default function CalendarScreen() {
   }, [browserCoords, loadedWindow.fromDate, loadedWindow.toDate]);
   const { events, isLoading, error } = useCalendarEvents(calendarQuery);
 
-  //============================
-  // Get events for selected date
-  //============================
-  const selectedDayEvents = getCalendarEventsForDate(events, selectedDate);
-  const currentMonthEvents = getCalendarEventsForMonth(events, currentYear, currentMonth);
+  const selectedDayEvents = useMemo(
+    () => getCalendarEventsForDate(events, selectedDate),
+    [events, selectedDate]
+  );
+  const currentMonthEvents = useMemo(
+    () => getCalendarEventsForMonth(events, currentYear, currentMonth),
+    [events, currentYear, currentMonth]
+  );
 
-  // Determine if layout should be vertical (mobile) or horizontal (desktop)
   const isVertical = width < 900;
-  const monthName = new Date(currentYear, currentMonth).toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  });
+  const monthName = useMemo(
+    () => new Date(currentYear, currentMonth).toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    }),
+    [currentMonth, currentYear]
+  );
 
-  const STARS = Array.from({ length: 150 }, (_, i) => ({
-    top: (i * 23.7) % 100,
-    left: (i * 41.3) % 100,
-    size: (i % 4) + 0.5,
-    opacity: (i % 6) * 0.08 + 0.15,
-  }));
+  function setDisplayedMonth(year: number, month: number) {
+    const monthIndex = getMonthIndex(year, month);
+
+    setCurrentYear(year);
+    setCurrentMonth(month);
+    setLoadedWindow((currentWindow) => {
+      if (monthIndex <= currentWindow.startMonthIndex) {
+        return getCalendarFetchWindowFromIndexes(currentWindow.startMonthIndex - 1, currentWindow.endMonthIndex);
+      }
+
+      if (monthIndex >= currentWindow.endMonthIndex) {
+        return getCalendarFetchWindowFromIndexes(currentWindow.startMonthIndex, currentWindow.endMonthIndex + 1);
+      }
+
+      return currentWindow;
+    });
+  }
+
+  function handlePreviousMonth() {
+    if (currentMonth === 0) {
+      setDisplayedMonth(currentYear - 1, 11);
+    } else {
+      setDisplayedMonth(currentYear, currentMonth - 1);
+    }
+  }
+
+  function handleNextMonth() {
+    if (currentMonth === 11) {
+      setDisplayedMonth(currentYear + 1, 0);
+    } else {
+      setDisplayedMonth(currentYear, currentMonth + 1);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.starField} pointerEvents="none">
-        {STARS.map((star, i) => (
-          <View
-            key={i}
-            style={{
-              position: 'absolute',
-              top: `${star.top}%` as any,
-              left: `${star.left}%` as any,
-              width: star.size,
-              height: star.size,
-              borderRadius: star.size,
-               backgroundColor: Palette.bgVoid, ////////////////////
-              opacity: star.opacity,
-            }}
-          />
-        ))}
-      </View>
-
-      {[0, 800, 1600, 2400, 3200, 4000].map((delay, i) => (
-        <ShootingStar key={i} delay={delay} />
-      ))}
+      <CalendarBackdrop />
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+        <View style={styles.filterButtonsContainer}>
+          {categories.map((category) => (
+            <ThemedView key={category} style={styles.categoryPill}>
+              <ThemedText type="small" style={styles.categoryText}>
+                {category}
+              </ThemedText>
+            </ThemedView>
+          ))}
+        </View>
         <ThemedText type="small" themeColor="textSecondary" style={styles.locationNotice}>
           {locationNotice}
         </ThemedText>
 
         <ThemedView style={styles.calendarContainer}>
           <View style={isVertical ? styles.layoutVertical : styles.layoutHorizontal}>
-            {/* Calendar Section (Left) */}
             <ThemedView style={[styles.calendarSection, !isVertical && { flex: 0.7 }]}>
               <View style={styles.monthHeader}>
                 <Pressable
-                  onPress={() => {
-                    if (currentMonth === 0) {
-                      setCurrentMonth(11);
-                      setCurrentYear(currentYear - 1);
-                    } else {
-                      setCurrentMonth(currentMonth - 1);
-                    }
-                  }}
+                  onPress={handlePreviousMonth}
                   style={({ pressed }) => [pressed && styles.pressed, styles.headerButton]}>
-                  <ThemedText type="small">← Prev</ThemedText>
+                  <ThemedText type="small">&lt; Prev</ThemedText>
                 </Pressable>
                 <View style={styles.monthHeaderContent} pointerEvents="none">
                   <ThemedText type="title" style={styles.monthTitle}>
@@ -174,16 +225,9 @@ export default function CalendarScreen() {
                   </ThemedText>
                 </View>
                 <Pressable
-                  onPress={() => {
-                    if (currentMonth === 11) {
-                      setCurrentMonth(0);
-                      setCurrentYear(currentYear + 1);
-                    } else {
-                      setCurrentMonth(currentMonth + 1);
-                    }
-                  }}
+                  onPress={handleNextMonth}
                   style={({ pressed }) => [pressed && styles.pressed, styles.headerButton]}>
-                  <ThemedText type="small">Next →</ThemedText>
+                  <ThemedText type="small">Next &gt;</ThemedText>
                 </Pressable>
               </View>
 
@@ -196,38 +240,26 @@ export default function CalendarScreen() {
               />
             </ThemedView>
 
-            {/* Selected Day Panel (Right) */}
-            <ThemedView style={[styles.selectedDayPanel, !isVertical && { flex: 0.3 }]}>
+            <ThemedView style={[styles.selectedDayPanel, !isVertical && styles.selectedDayPanelDesktop, !isVertical && { flex: 0.3 }]}>
               <View style={[styles.selectedDayHeader, { zIndex: 99 }]}>
-                <ThemedText type="title" style={styles.selectedDateText}>
-                  {selectedDate.toLocaleDateString('en-US', { 
-                    month: 'long', 
-                    day: 'numeric', 
-                    year: 'numeric' 
+                <ThemedText type="smallBold" style={styles.selectedDateText}>
+                  {selectedDate.toLocaleDateString('en-US', {
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric',
                   })}
                 </ThemedText>
               </View>
 
-              {isLoading ? (
-                <View style={styles.noEventsContainer}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
-                    Loading calendar events...
-                  </ThemedText>
-                </View>
-              ) : error ? (
-                <View style={styles.noEventsContainer}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
-                    Could not load calendar events.
-                  </ThemedText>
-                </View>
-              ) : selectedDayEvents.length > 0 ? (
+              {selectedDayEvents.length > 0 ? (
                 <>
                   <ThemedText type="small" themeColor="textSecondary" style={styles.eventCount}>
-                    {selectedDayEvents.length} celestial event{selectedDayEvents.length !== 1 ? 's' : ''} detected.
+                    {selectedDayEvents.length} event{selectedDayEvents.length !== 1 ? 's' : ''} detected.
                   </ThemedText>
 
                   <ScrollView
-                    showsVerticalScrollIndicator={true}
+                    style={styles.eventListScroll}
+                    showsVerticalScrollIndicator
                     contentContainerStyle={styles.eventList}>
                     {selectedDayEvents.map((event) => (
                       <ThemedView key={event.id} style={styles.eventCard}>
@@ -251,6 +283,21 @@ export default function CalendarScreen() {
                     ))}
                   </ScrollView>
                 </>
+              ) : isLoading ? (
+                <View style={styles.noEventsContainer}>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
+                    Loading calendar events...
+                  </ThemedText>
+                </View>
+              ) : error ? (
+                <View style={styles.noEventsContainer}>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
+                    Could not load calendar events.
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.errorText}>
+                    {error}
+                  </ThemedText>
+                </View>
               ) : (
                 <View style={styles.noEventsContainer}>
                   <ThemedText type="small" themeColor="textSecondary" style={styles.noEventsText}>
@@ -284,11 +331,30 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     paddingTop: 60,
   },
+  filterButtonsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.two,
+    marginTop: Spacing.three,
+  },
+  categoryPill: {
+    backgroundColor: Palette.bgDeep,
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.pill,
+  },
+  categoryText: {
+    color: Palette.accentMoon,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
   calendarContainer: {
     marginTop: Spacing.one,
     paddingTop: Spacing.one,
     backgroundColor: Palette.bgDeep,
-    backdropFilter: 'blur(14px)',
     borderRadius: Radius.lg,
     padding: Spacing.three,
     borderWidth: 1,
@@ -332,7 +398,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: Palette.white,
     letterSpacing: 1,
-    marginBottom: Spacing.two ,
+    marginBottom: Spacing.two,
     fontSize: 30,
     paddingBottom: Spacing.one,
   },
@@ -345,6 +411,11 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     position: 'relative',
     zIndex: 3,
+  },
+  selectedDayPanelDesktop: {
+    maxHeight: CALENDAR_GRID_MAX_HEIGHT,
+    alignSelf: 'flex-start',
+    overflow: 'hidden',
   },
   selectedDayHeader: {
     justifyContent: 'space-between',
@@ -364,6 +435,10 @@ const styles = StyleSheet.create({
     color: Palette.textSecondary,
     marginVertical: Spacing.two,
   },
+  eventListScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
   eventList: {
     gap: Spacing.two,
   },
@@ -381,7 +456,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
   },
   eventCardIcon: {
-// TODO import client/assests/icons and use them here instead of emoji
     textAlign: 'center',
     lineHeight: 40,
     fontSize: 20,
@@ -390,7 +464,7 @@ const styles = StyleSheet.create({
   },
   eventContent: {
     flex: 1,
-    gap: Spacing.one, 
+    gap: Spacing.one,
   },
   eventTitle: {
     color: Palette.textPrimary,
@@ -409,6 +483,11 @@ const styles = StyleSheet.create({
   },
   noEventsText: {
     color: Palette.textSecondary,
+  },
+  errorText: {
+    color: Palette.textTertiary,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
   locationNotice: {
     paddingHorizontal: Spacing.two,
