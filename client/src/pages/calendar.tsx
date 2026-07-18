@@ -1,5 +1,4 @@
 import React, { memo, useEffect, useMemo, useState } from 'react';
-import * as Location from 'expo-location';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,6 +11,7 @@ import { Spacing } from '@/constants/theme';
 import { useCalendarEvents } from '@/hooks/use-calendar-events';
 import { getEventIconByType } from '@/lib/event-icons';
 import { getCalendarEventsForDate, getCalendarEventsForMonth } from '@/utilities/events-api';
+import { getOrRequestUserLocation } from '@/utilities/user-location-service';
 
 const categories = ['Meteor Showers', 'Rocket Launches', 'Alignments', 'More Filters'];
 const MONTHS_BEHIND_TO_FETCH = 1;
@@ -103,20 +103,15 @@ export default function CalendarScreen() {
 
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const location = await getOrRequestUserLocation();
         if (cancelled) return;
-        if (status !== 'granted') {
+        if (!location) {
           setBrowserCoords(null);
           setLocationNotice('Location is required for visible sky events. Enable location in browser site settings and reload.');
           return;
         }
 
-        const position = await Location.getCurrentPositionAsync({});
-        if (cancelled) return;
-        setBrowserCoords({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
+        setBrowserCoords(location);
         setLocationNotice('Visible sky events use your current browser location.');
       } catch {
         if (cancelled) return;

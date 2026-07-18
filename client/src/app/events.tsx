@@ -6,7 +6,6 @@
 // phase 2 will route to a per-event detail page.
 
 import { useEffect, useMemo, useState } from 'react';
-import * as Location from 'expo-location';
 import {
   ActivityIndicator,
   Pressable,
@@ -20,6 +19,7 @@ import { EventCard } from '@/components/events/event-card';
 import { EventModal } from '@/components/events/event-modal';
 import { Palette, Radius } from '@/constants/tokens';
 import { fetchEventsList, type EventListItem } from '@/lib/events-api';
+import { getOrRequestUserLocation } from '@/utilities/user-location-service';
 import { getUser } from '@/utilities/users-service';
 
 const ALL = 'All';
@@ -40,11 +40,10 @@ export default function EventsScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return;
-        const pos = await Location.getCurrentPositionAsync({});
-        setUserLat(pos.coords.latitude);
-        setUserLon(pos.coords.longitude);
+        const location = await getOrRequestUserLocation();
+        if (!location) return;
+        setUserLat(location.latitude);
+        setUserLon(location.longitude);
       } catch {
         // Location unavailable — score section shows an "enable location" note.
       }

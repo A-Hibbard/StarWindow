@@ -11,9 +11,13 @@ import {
   View,
 } from 'react-native';
 
+import { EventCard } from '@/components/events/event-card';
+import { EventModal } from '@/components/events/event-modal';
 import { Palette, Radius } from '@/constants/tokens';
+import { fetchSavedUserEvents, type SavedUserEvent } from '@/lib/events-api';
 import * as eventTypesAPI from '@/utilities/event-types-api';
 import type { EventType } from '@/utilities/event-types-api';
+import { getOrRequestUserLocation } from '@/utilities/user-location-service';
 import * as usersService from '@/utilities/users-service';
 
 const STARS = Array.from({ length: 110 }, (_, i) => ({
@@ -22,6 +26,13 @@ const STARS = Array.from({ length: 110 }, (_, i) => ({
   size: (i % 4) + 0.5,
   opacity: (i % 6) * 0.07 + 0.12,
 }));
+
+const PROFILE_TABS = [
+  { id: 'edit-profile', label: 'Edit Profile' },
+  { id: 'saved-events', label: 'My Saved Events' },
+] as const;
+
+type ProfileTab = (typeof PROFILE_TABS)[number]['id'];
 
 function getDisplayName(user: usersService.AuthUser | null) {
   return [user?.f_name, user?.l_name].filter(Boolean).join(' ').trim() || user?.email || 'Profile';
@@ -49,6 +60,78 @@ function sameIds(a: number[], b: number[]) {
 export default function ProfileScreen() {
   const router = useRouter();
   const [user, setUser] = useState<usersService.AuthUser | null>(() => usersService.getUser());
+  const [activeTab, setActiveTab] = useState<ProfileTab>('saved-events');
+
+  useEffect(() => {
+    if (!usersService.getToken()) router.replace('/');
+  }, [router]);
+
+  return (
+    <SafeAreaView style={styles.app}>
+      <View style={styles.starField}>
+        {STARS.map((star, index) => (
+          <View
+            key={index}
+            style={{
+              position: 'absolute',
+              top: `${star.top}%` as any,
+              left: `${star.left}%` as any,
+              width: star.size,
+              height: star.size,
+              borderRadius: star.size,
+              backgroundColor: Palette.white,
+              opacity: star.opacity,
+            }}
+          />
+        ))}
+      </View>
+
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{getInitials(user)}</Text>
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>PROFILE</Text>
+            <Text style={styles.title}>{getDisplayName(user)}</Text>
+            <Text style={styles.subtitle}>{getProfileLevel(user)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.tabBar}>
+          {PROFILE_TABS.map((tab) => {
+            const selected = activeTab === tab.id;
+            return (
+              <Pressable
+                key={tab.id}
+                onPress={() => setActiveTab(tab.id)}
+                style={[styles.tabButton, selected && styles.tabButtonSelected]}>
+                <Text style={[styles.tabButtonText, selected && styles.tabButtonTextSelected]}>
+                  {tab.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {activeTab === 'edit-profile' ? (
+          <EditProfile user={user} onUserChange={setUser} />
+        ) : (
+          <MySavedEvents user={user} />
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function EditProfile({
+  user,
+  onUserChange,
+}: {
+  user: usersService.AuthUser | null;
+  onUserChange: (user: usersService.AuthUser | null) => void;
+}) {
+  const router = useRouter();
   const [firstName, setFirstName] = useState(user?.f_name ?? '');
   const [lastName, setLastName] = useState(user?.l_name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
@@ -78,7 +161,7 @@ export default function ProfileScreen() {
     ])
       .then(([currentUser, availableEventTypes, userEventTypes]) => {
         if (cancelled) return;
-        setUser(currentUser);
+        onUserChange(currentUser);
         setFirstName(currentUser.f_name ?? '');
         setLastName(currentUser.l_name ?? '');
         setEmail(currentUser.email ?? '');
@@ -97,7 +180,7 @@ export default function ProfileScreen() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [onUserChange, router]);
 
   const hasChanges =
     firstName.trim() !== (user?.f_name ?? '') ||
@@ -122,7 +205,7 @@ export default function ProfileScreen() {
         l_name: lastName.trim(),
         email: email.trim(),
       });
-      setUser(updatedUser);
+      onUserChange(updatedUser);
       setMessage('Profile updated.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update profile.');
@@ -173,137 +256,207 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.app}>
-      <View style={styles.starField}>
-        {STARS.map((star, index) => (
-          <View
-            key={index}
-            style={{
-              position: 'absolute',
-              top: `${star.top}%` as any,
-              left: `${star.left}%` as any,
-              width: star.size,
-              height: star.size,
-              borderRadius: star.size,
-              backgroundColor: Palette.white,
-              opacity: star.opacity,
-            }}
-          />
-        ))}
+    <View style={styles.grid}>
+      <View style={styles.panel}>
+        <Text style={styles.panelEyebrow}>ACCOUNT DETAILS</Text>
+        {isLoading ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={Palette.accentMoon} />
+            <Text style={styles.loadingText}>Loading profile...</Text>
+          </View>
+        ) : (
+          <>
+            <ProfileField label="First Name" value={firstName} onChangeText={setFirstName} autoCapitalize="words" />
+            <ProfileField label="Last Name" value={lastName} onChangeText={setLastName} autoCapitalize="words" />
+            <ProfileField
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+
+            {!!error && <Text style={styles.errorText}>{error}</Text>}
+            {!!message && <Text style={styles.successText}>{message}</Text>}
+
+            <View style={styles.actionRow}>
+              <Pressable
+                onPress={handleSave}
+                disabled={isSaving || !hasChanges}
+                style={[styles.primaryButton, (isSaving || !hasChanges) && styles.disabledButton]}>
+                <Text style={styles.primaryButtonText}>{isSaving ? 'SAVING...' : 'SAVE CHANGES'}</Text>
+              </Pressable>
+              <Pressable onPress={handleReset} disabled={isSaving || !hasChanges} style={styles.secondaryButton}>
+                <Text style={styles.secondaryButtonText}>RESET</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{getInitials(user)}</Text>
+      <View style={styles.panel}>
+        <Text style={styles.panelEyebrow}>READ ONLY</Text>
+        <InfoRow label="User ID" value={user?.user_id != null ? String(user.user_id) : '--'} />
+        <InfoRow label="Status" value={user?.status ?? 'Unavailable'} />
+        <InfoRow label="Status ID" value={user?.status_id != null ? String(user.status_id) : '--'} />
+      </View>
+
+      <View style={styles.panel}>
+        <Text style={styles.panelEyebrow}>EVENT PREFERENCES</Text>
+        <Text style={styles.panelCopy}>Choose which sky events should shape your calendar and feed.</Text>
+        {isLoading ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={Palette.accentMoon} />
+            <Text style={styles.loadingText}>Loading preferences...</Text>
           </View>
-          <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>PROFILE</Text>
-            <Text style={styles.title}>{getDisplayName(user)}</Text>
-            <Text style={styles.subtitle}>{getProfileLevel(user)}</Text>
-          </View>
-        </View>
-
-        <View style={styles.grid}>
-          <View style={styles.panel}>
-            <Text style={styles.panelEyebrow}>ACCOUNT DETAILS</Text>
-            {isLoading ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={Palette.accentMoon} />
-                <Text style={styles.loadingText}>Loading profile...</Text>
-              </View>
-            ) : (
-              <>
-                <ProfileField label="First Name" value={firstName} onChangeText={setFirstName} autoCapitalize="words" />
-                <ProfileField label="Last Name" value={lastName} onChangeText={setLastName} autoCapitalize="words" />
-                <ProfileField
-                  label="Email"
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-
-                {!!error && <Text style={styles.errorText}>{error}</Text>}
-                {!!message && <Text style={styles.successText}>{message}</Text>}
-
-                <View style={styles.actionRow}>
+        ) : (
+          <>
+            <View style={styles.preferenceGrid}>
+              {eventTypes.map((eventType) => {
+                const selected = selectedEventTypeIds.includes(eventType.event_type_id);
+                return (
                   <Pressable
-                    onPress={handleSave}
-                    disabled={isSaving || !hasChanges}
-                    style={[styles.primaryButton, (isSaving || !hasChanges) && styles.disabledButton]}>
-                    <Text style={styles.primaryButtonText}>{isSaving ? 'SAVING...' : 'SAVE CHANGES'}</Text>
-                  </Pressable>
-                  <Pressable onPress={handleReset} disabled={isSaving || !hasChanges} style={styles.secondaryButton}>
-                    <Text style={styles.secondaryButtonText}>RESET</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
-          </View>
-
-          <View style={styles.panel}>
-            <Text style={styles.panelEyebrow}>READ ONLY</Text>
-            <InfoRow label="User ID" value={user?.user_id != null ? String(user.user_id) : '--'} />
-            <InfoRow label="Status" value={user?.status ?? 'Unavailable'} />
-            <InfoRow label="Status ID" value={user?.status_id != null ? String(user.status_id) : '--'} />
-          </View>
-
-          <View style={styles.panel}>
-            <Text style={styles.panelEyebrow}>EVENT PREFERENCES</Text>
-            <Text style={styles.panelCopy}>Choose which sky events should shape your calendar and feed.</Text>
-            {isLoading ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={Palette.accentMoon} />
-                <Text style={styles.loadingText}>Loading preferences...</Text>
-              </View>
-            ) : (
-              <>
-                <View style={styles.preferenceGrid}>
-                  {eventTypes.map((eventType) => {
-                    const selected = selectedEventTypeIds.includes(eventType.event_type_id);
-                    return (
-                      <Pressable
-                        key={eventType.event_type_id}
-                        onPress={() => toggleEventType(eventType.event_type_id)}
-                        style={[styles.preferencePill, selected && styles.preferencePillSelected]}>
-                        <Text style={[styles.preferenceText, selected && styles.preferenceTextSelected]}>
-                          {eventType.event_type}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                {!!preferencesError && <Text style={styles.errorText}>{preferencesError}</Text>}
-                {!!preferencesMessage && <Text style={styles.successText}>{preferencesMessage}</Text>}
-
-                <View style={styles.actionRow}>
-                  <Pressable
-                    onPress={handleSavePreferences}
-                    disabled={isSavingPreferences || !hasPreferenceChanges}
-                    style={[styles.primaryButton, (isSavingPreferences || !hasPreferenceChanges) && styles.disabledButton]}>
-                    <Text style={styles.primaryButtonText}>
-                      {isSavingPreferences ? 'SAVING...' : 'SAVE PREFERENCES'}
+                    key={eventType.event_type_id}
+                    onPress={() => toggleEventType(eventType.event_type_id)}
+                    style={[styles.preferencePill, selected && styles.preferencePillSelected]}>
+                    <Text style={[styles.preferenceText, selected && styles.preferenceTextSelected]}>
+                      {eventType.event_type}
                     </Text>
                   </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      setSelectedEventTypeIds(savedEventTypeIds);
-                      setPreferencesError('');
-                      setPreferencesMessage('');
-                    }}
-                    disabled={isSavingPreferences || !hasPreferenceChanges}
-                    style={styles.secondaryButton}>
-                    <Text style={styles.secondaryButtonText}>RESET</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
-          </View>
+                );
+              })}
+            </View>
+
+            {!!preferencesError && <Text style={styles.errorText}>{preferencesError}</Text>}
+            {!!preferencesMessage && <Text style={styles.successText}>{preferencesMessage}</Text>}
+
+            <View style={styles.actionRow}>
+              <Pressable
+                onPress={handleSavePreferences}
+                disabled={isSavingPreferences || !hasPreferenceChanges}
+                style={[styles.primaryButton, (isSavingPreferences || !hasPreferenceChanges) && styles.disabledButton]}>
+                <Text style={styles.primaryButtonText}>
+                  {isSavingPreferences ? 'SAVING...' : 'SAVE PREFERENCES'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setSelectedEventTypeIds(savedEventTypeIds);
+                  setPreferencesError('');
+                  setPreferencesMessage('');
+                }}
+                disabled={isSavingPreferences || !hasPreferenceChanges}
+                style={styles.secondaryButton}>
+                <Text style={styles.secondaryButtonText}>RESET</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function MySavedEvents({ user }: { user: usersService.AuthUser | null }) {
+  const [events, setEvents] = useState<SavedUserEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState<SavedUserEvent | null>(null);
+  const [userLat, setUserLat] = useState<number | null>(null);
+  const [userLon, setUserLon] = useState<number | null>(null);
+  const hasToken = Boolean(usersService.getToken());
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const location = await getOrRequestUserLocation();
+        if (cancelled || !location) return;
+        if (cancelled) return;
+        setUserLat(location.latitude);
+        setUserLon(location.longitude);
+      } catch {
+        if (cancelled) return;
+        setUserLat(null);
+        setUserLon(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    if (!hasToken) return () => controller.abort();
+
+    fetchSavedUserEvents(controller.signal)
+      .then((savedEvents) => {
+        if (!cancelled) setEvents(savedEvents);
+      })
+      .catch((err) => {
+        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return;
+        setError(err instanceof Error ? err.message : 'Could not load saved events.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [hasToken, user?.user_id]);
+
+  return (
+    <>
+      <View style={styles.grid}>
+        <View style={[styles.panel, styles.fullPanel]}>
+          <Text style={styles.panelEyebrow}>MY SAVED EVENTS</Text>
+          <Text style={styles.panelCopy}>Events you saved from the events list.</Text>
+
+          {!hasToken ? (
+            <Text style={styles.errorText}>Log in to see your saved events.</Text>
+          ) : isLoading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color={Palette.accentMoon} />
+              <Text style={styles.loadingText}>Loading saved events...</Text>
+            </View>
+          ) : error ? (
+            <Text style={styles.errorText}>{error}</Text>
+          ) : events.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No saved events yet.</Text>
+              <Text style={styles.emptyCopy}>Save events from the Events page and they will appear here.</Text>
+            </View>
+          ) : (
+            <View style={styles.savedEventsList}>
+              {events.map((event) => (
+                <EventCard
+                  key={String(event.user_event_id)}
+                  event={event}
+                  onPress={(pressedEvent) => setSelectedEvent(pressedEvent as SavedUserEvent)}
+                />
+              ))}
+            </View>
+          )}
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+
+      {selectedEvent ? (
+        <EventModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+          userId={user?.user_id ?? null}
+          userLat={userLat}
+          userLon={userLon}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -409,6 +562,37 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: 6,
   },
+  tabBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    backgroundColor: Palette.bgDeep,
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    borderRadius: Radius.xl,
+    padding: 8,
+  },
+  tabButton: {
+    minHeight: 42,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabButtonSelected: {
+    borderColor: Palette.accentMoon,
+    backgroundColor: Palette.accentMoon + '1A',
+  },
+  tabButtonText: {
+    color: Palette.textSecondary,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  tabButtonTextSelected: {
+    color: Palette.accentMoon,
+  },
   grid: {
     flexDirection: 'row',
     gap: 16,
@@ -423,6 +607,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xl,
     padding: 20,
     gap: 14,
+  },
+  fullPanel: {
+    flexBasis: '100%',
   },
   panelEyebrow: {
     color: Palette.accentMoonDim,
@@ -534,6 +721,25 @@ const styles = StyleSheet.create({
   },
   preferenceTextSelected: {
     color: Palette.accentMoon,
+  },
+  savedEventsList: {
+    gap: 12,
+  },
+  emptyState: {
+    minHeight: 120,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  emptyTitle: {
+    color: Palette.textPrimary,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  emptyCopy: {
+    color: Palette.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
   },
   infoRow: {
     borderBottomWidth: 1,

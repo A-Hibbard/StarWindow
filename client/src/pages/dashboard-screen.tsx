@@ -41,6 +41,7 @@ import { fetchMoonPhase } from '@/utilities/moon-api';
 import { fetchNasaImageNews, type NewsArticle } from '@/utilities/news-api';
 import { fetchViewingScore } from '@/utilities/viewing-score-api';
 import { fetchCurrentWeather, type WeatherResponse } from '@/utilities/weather-api';
+import { getOrRequestUserLocation } from '@/utilities/user-location-service';
 import * as usersService from '@/utilities/users-service';
 
 const STARS = Array.from({ length: 150 }, (_, i) => ({
@@ -714,9 +715,9 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
 
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const coords = await getOrRequestUserLocation();
         if (!isMounted) return;
-        if (status !== 'granted') {
+        if (!coords) {
           setBrowserCoords(null);
           setViewingScore(null);
           setViewingScoreStatus('location-required');
@@ -735,12 +736,6 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
           return;
         }
 
-        const position = await Location.getCurrentPositionAsync({});
-        if (!isMounted) return;
-        const coords = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        };
         setBrowserCoords(coords);
         setLocationLabel(formatCoordinates(coords.latitude, coords.longitude));
         setLocationMessage('Sky data is based on your current browser location.');
