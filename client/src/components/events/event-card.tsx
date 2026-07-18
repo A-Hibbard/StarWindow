@@ -70,6 +70,7 @@ export function EventCard({
   const isLaunch = event.category === 'launch';
   const accent = isLaunch ? LAUNCH_ACCENT : EVENT_ACCENT;
   const description = truncate(event.description);
+  const savedNote = getSavedEventNote(event);
   const fallbackIcon = fallbackIconSource(event);
 
   return (
@@ -120,9 +121,24 @@ export function EventCard({
             {description}
           </Text>
         ) : null}
+
+        {savedNote ? (
+          <View style={styles.notePreview}>
+            <Text style={styles.noteLabel}>NOTE</Text>
+            <Text style={styles.noteText} numberOfLines={2}>
+              {savedNote}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
+}
+
+function getSavedEventNote(event: EventListItem) {
+  if (!('event_comment' in event)) return '';
+  const note = event.event_comment;
+  return typeof note === 'string' ? note.trim() : '';
 }
 
 const styles = StyleSheet.create({
@@ -198,5 +214,23 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     color: Palette.textSecondary,
     marginTop: 2,
+  },
+  notePreview: {
+    marginTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: Palette.borderSoft,
+    paddingTop: 7,
+    gap: 3,
+  },
+  noteLabel: {
+    color: Palette.accentMoonDim,
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  noteText: {
+    color: Palette.textPrimary,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
   },
 });
