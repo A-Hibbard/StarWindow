@@ -5,9 +5,10 @@ type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export default async function sendRequest<TPayload = unknown, TResponse = unknown>(
   url: string,
   method: Method = 'GET',
-  payload: TPayload | null = null
+  payload: TPayload | null = null,
+  requestOptions: Pick<RequestInit, 'signal'> = {}
 ): Promise<TResponse> {
-  const options: RequestInit = { method };
+  const options: RequestInit = { method, ...requestOptions };
 
   if (payload) {
     options.headers = { 'Content-Type': 'application/json' };

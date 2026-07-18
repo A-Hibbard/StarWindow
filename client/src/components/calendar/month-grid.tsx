@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { getEventIconByType } from '@/lib/event-icons';
 import { Spacing } from '@/constants/theme';
 
 export type CalendarEvent = {
   id: string;
   date: number;
+  type?: string;
+  eventType?: string;
   icon?: string;
 };
 
@@ -54,7 +57,7 @@ function getCalendarWeeks(year: number, month: number): CalendarDay[][] {
   return weeks;
 }
 
-export function MonthGrid({
+function MonthGridComponent({
   year,
   month,
   events = [],
@@ -62,7 +65,21 @@ export function MonthGrid({
   onSelectDate,
   compact = false,
 }: MonthGridProps) {
-  const weeks = getCalendarWeeks(year, month);
+  const weeks = useMemo(() => getCalendarWeeks(year, month), [year, month]);
+  const eventsByDate = useMemo(() => {
+    const byDate = new Map<number, CalendarEvent[]>();
+
+    for (const event of events) {
+      const dateEvents = byDate.get(event.date);
+      if (dateEvents) {
+        dateEvents.push(event);
+      } else {
+        byDate.set(event.date, [event]);
+      }
+    }
+
+    return byDate;
+  }, [events]);
 
   return (
     <View style={[styles.calendarCard, compact && styles.calendarCardCompact]}>
@@ -84,7 +101,7 @@ export function MonthGrid({
               selectedDate?.getDate() === day.date &&
               selectedDate?.getMonth() === month &&
               selectedDate?.getFullYear() === year;
-            const dayEvents = day.currentMonth ? events.filter((event) => event.date === day.date) : [];
+            const dayEvents = day.currentMonth ? eventsByDate.get(day.date) ?? [] : [];
             const dayContent = (
               <View
                 style={[
@@ -108,7 +125,11 @@ export function MonthGrid({
                   <View style={[styles.eventIconsContainer, compact && styles.eventIconsContainerCompact]}>
                     {dayEvents.slice(0, compact ? 1 : 3).map((event) => (
                       <View key={event.id} style={[styles.eventIconBox, compact && styles.eventIconBoxCompact]}>
-                        {!compact && <Text style={styles.eventIcon}>{event.icon ?? 'x'}</Text>}
+                        {!compact && (
+                          <Text style={styles.eventIcon}>
+                            {event.icon ?? getEventIconByType(event.type ?? event.eventType)}
+                          </Text>
+                        )}
                       </View>
                     ))}
                   </View>
@@ -134,6 +155,8 @@ export function MonthGrid({
     </View>
   );
 }
+
+export const MonthGrid = memo(MonthGridComponent);
 
 const styles = StyleSheet.create({
   calendarCard: {

@@ -4,9 +4,10 @@ import { Palette } from '@/constants/tokens';
 
 const getScreen = () => Dimensions.get('window');
 
-export function ShootingStar({ delay }: { delay: number }) {
+export function ShootingStar({ delay, glow = true }: { delay: number; glow?: boolean }) {
   const position = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const [screen, setScreen] = useState(getScreen());
   const startLeft = useRef(((delay / 800) % 7) * (screen.width / 6) - 160).current;
   const startTop = useRef(-80 - ((delay / 800) % 4) * 70).current;
@@ -19,10 +20,13 @@ export function ShootingStar({ delay }: { delay: number }) {
   }, []);
 
   useEffect(() => {
+    let isActive = true;
+
     const animate = () => {
+      if (!isActive) return;
       position.setValue(0);
       opacity.setValue(0);
-      Animated.sequence([
+      animationRef.current = Animated.sequence([
         Animated.delay(delay),
         Animated.parallel([
           Animated.timing(position, {
@@ -43,10 +47,15 @@ export function ShootingStar({ delay }: { delay: number }) {
             }),
           ]),
         ]),
-      ]).start(() => animate());
+      ]);
+      animationRef.current.start(() => animate());
     };
     animate();
-  }, []);
+    return () => {
+      isActive = false;
+      animationRef.current?.stop();
+    };
+  }, [delay, opacity, position]);
 
   const translateX = position.interpolate({
     inputRange: [0, 1],
@@ -79,10 +88,14 @@ export function ShootingStar({ delay }: { delay: number }) {
           height: 7,
           borderRadius: 7,
           backgroundColor: Palette.white,
-          shadowColor: Palette.accent,
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 1,
-          shadowRadius: 8,
+          ...(glow
+            ? {
+                shadowColor: Palette.accent,
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 1,
+                shadowRadius: 8,
+              }
+            : null),
         }} />
       </View>
     </Animated.View>

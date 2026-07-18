@@ -13,6 +13,10 @@
   border-radius: 20px;
 }
 
+.previewMapContainer {
+  border-radius: 0;
+}
+
 /* Rocket launch-site marker: red square with the rocket art layered on top.
  * The square is pure CSS so the marker is visible even before icon_rocket.png
  * exists; the <img> simply sits inside it. */
@@ -30,6 +34,18 @@
   width: 16px;
   height: 16px;
   object-fit: contain;
+}
+
+.launchPopupLink {
+  color: #00d4ff;
+  display: inline-block;
+  font-weight: 700;
+  margin-top: 8px;
+  text-decoration: none;
+}
+.launchPopupLink:hover {
+  color: #ffffff;
+  text-decoration: none;
 }
 
 /* Map backdrop while tiles load — matches the deep-space background. */

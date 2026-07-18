@@ -6,6 +6,7 @@ export interface AuthUser {
   f_name: string;
   l_name: string;
   status_id?: number | null;
+  status?: string | null;
 }
 
 export interface SignUpData {
@@ -27,6 +28,7 @@ interface TokenPayload {
 }
 
 let memoryToken: string | null = null;
+const authListeners = new Set<() => void>();
 
 export async function signUp(userData: SignUpData): Promise<AuthUser | null> {
   const token = await usersAPI.signUp(userData);
@@ -42,6 +44,20 @@ export async function login(credentials: LoginCredentials): Promise<AuthUser | n
 
 export function saveEventTypes(eventTypeIds: number[]) {
   return usersAPI.saveEventTypes(eventTypeIds);
+}
+
+export function getCurrentUser(): Promise<AuthUser> {
+  return usersAPI.getCurrentUser();
+}
+
+export async function updateCurrentUser(userData: Pick<AuthUser, 'f_name' | 'l_name' | 'email'>): Promise<AuthUser | null> {
+  const token = await usersAPI.updateCurrentUser(userData);
+  setToken(token);
+  return getUser();
+}
+
+export function getUserEventTypes() {
+  return usersAPI.getUserEventTypes();
 }
 
 export function getToken(): string | null {
@@ -66,19 +82,29 @@ export function logOut() {
   setToken(null);
 }
 
+export function subscribeAuthChanges(listener: () => void) {
+  authListeners.add(listener);
+  return () => {
+    authListeners.delete(listener);
+  };
+}
+
 export function checkToken() {
   return usersAPI.checkToken().then((dateStr) => new Date(dateStr));
 }
 
 function setToken(token: string | null) {
   memoryToken = token;
-  if (typeof localStorage === 'undefined') return;
 
-  if (token) {
-    localStorage.setItem('token', token);
-  } else {
-    localStorage.removeItem('token');
+  if (typeof localStorage !== 'undefined') {
+    if (token) {
+      localStorage.setItem('token', token);
+    } else {
+      localStorage.removeItem('token');
+    }
   }
+
+  authListeners.forEach((listener) => listener());
 }
 
 function readToken() {

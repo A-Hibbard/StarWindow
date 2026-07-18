@@ -1,10 +1,19 @@
 const { Pool } = require("pg");
-require("dotenv").config();
+const path = require("path");
+
+const envPath = path.join(__dirname, "..", ".env");
+require("dotenv").config({ path: envPath });
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error(`DATABASE_URL is not set. Expected it in ${envPath}`);
+}
 
 const database = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString,
 
-  ssl: process.env.DATABASE_URL.includes("supabase")
+  ssl: connectionString.includes("supabase")
     ? { rejectUnauthorized: false }
     : false,
 });

@@ -1,1 +1,5 @@
-export { default } from '@/pages/login-screen';
+import DashboardScreen from '@/pages/dashboard-screen';
+
+export default function IndexScreen() {
+  return <DashboardScreen locked />;
+}

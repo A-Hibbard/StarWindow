@@ -1,8 +1,29 @@
 import type { RocketLaunch } from '@/components/star-map';
 
-// Base URL of our Express server. Override per-environment with
-// EXPO_PUBLIC_API_URL (e.g. a deployed server); falls back to local dev.
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
+// Base URL of our Express server. Set per-environment with EXPO_PUBLIC_API_URL.
+const API_BASE = process.env.EXPO_PUBLIC_API_URL;
+
+/** Moon render + phase for a given instant, from GET /api/astronomy/moon. */
+export interface MoonView {
+  datetime: string;
+  /** URL of NASA's rendered Moon image, or null if unavailable. */
+  image_url: string | null;
+  /** Percent illuminated (0–100). */
+  phase: number | null;
+  /** Days since the new moon (0–29.53). */
+  age: number | null;
+}
+
+/**
+ * Fetch the current (or a given instant's) Moon view via our backend proxy of
+ * NASA's Dial-a-Moon. Proxied server-side so it isn't blocked by browser CORS.
+ */
+export async function fetchMoonView(datetime?: string): Promise<MoonView> {
+  const qs = datetime ? `?datetime=${encodeURIComponent(datetime)}` : '';
+  const res = await fetch(`${API_BASE}/api/astronomy/moon${qs}`);
+  if (!res.ok) throw new Error(`Moon request failed: ${res.status}`);
+  return res.json();
+}
 
 /** Raw shape of one launch as returned by GET /api/astronomy/launches. */
 interface RawLaunch {
@@ -20,17 +41,37 @@ interface RawLaunch {
   } | null;
 }
 
+function normalizeLaunchKey(value?: string | null) {
+  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getLaunchKey(launch: RawLaunch) {
+  return [
+    normalizeLaunchKey(launch.name),
+    normalizeLaunchKey(launch.net),
+    normalizeLaunchKey(launch.rocket),
+    normalizeLaunchKey(launch.provider),
+  ].join('|');
+}
+
+function sortByNet(left: NonNullable<RocketLaunch['upcoming']>[number], right: NonNullable<RocketLaunch['upcoming']>[number]) {
+  const leftTime = left.net ? new Date(left.net).getTime() : Infinity;
+  const rightTime = right.net ? new Date(right.net).getTime() : Infinity;
+  return leftTime - rightTime;
+}
+
 /**
  * Fetches upcoming launches from our server and normalizes them into one
  * `RocketLaunch` per pad (so multiple launches at the same pad share a marker).
  * Entries without usable pad coordinates are dropped.
  */
 export async function fetchLaunches(limit = 20): Promise<RocketLaunch[]> {
-  const res = await fetch(`${API_BASE}/api/astronomy/launches?limit=${limit}`);
+  const res = await fetch(`${API_BASE}/api/launches?limit=${limit}`);
   if (!res.ok) throw new Error(`Launches request failed: ${res.status}`);
 
   const data: { results?: RawLaunch[] } = await res.json();
   const byPad = new Map<string, RocketLaunch>();
+  const seenByPad = new Map<string, Set<string>>();
 
   for (const l of data.results ?? []) {
     const lat = Number(l.pad?.latitude);
@@ -44,7 +85,14 @@ export async function fetchLaunches(limit = 20): Promise<RocketLaunch[]> {
     if (!site) {
       site = { id, name: padName, lat, lng, location: l.pad.location, upcoming: [] };
       byPad.set(id, site);
+      seenByPad.set(id, new Set());
     }
+
+    const launchKey = getLaunchKey(l);
+    const seenLaunches = seenByPad.get(id);
+    if (seenLaunches?.has(launchKey)) continue;
+    seenLaunches?.add(launchKey);
+
     site.upcoming!.push({
       name: l.name ?? 'Launch',
       net: l.net,
@@ -55,5 +103,10 @@ export async function fetchLaunches(limit = 20): Promise<RocketLaunch[]> {
     });
   }
 
-  return [...byPad.values()];
+  return [...byPad.values()]
+    .map((site) => ({
+      ...site,
+      upcoming: [...(site.upcoming ?? [])].sort(sortByNet).slice(0, 1),
+    }))
+    .filter((site) => (site.upcoming?.length ?? 0) > 0);
 }
