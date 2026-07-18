@@ -14,6 +14,7 @@ import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
 import { Colors, MaxContentWidth, Spacing } from '@/constants/theme';
+import { dvw } from '@/utilities/responsive-dimensions';
 
 export default function AppTabs() {
   return (
@@ -95,7 +96,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexGrow: 1,
     gap: Spacing.two,
-    maxWidth: MaxContentWidth,
+    maxWidth: dvw(MaxContentWidth),
   },
   brandText: {
     marginRight: 'auto',

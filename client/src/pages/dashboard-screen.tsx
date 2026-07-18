@@ -41,8 +41,10 @@ import { fetchMoonPhase } from '@/utilities/moon-api';
 import { fetchNasaNews, type NewsArticle } from '@/utilities/news-api';
 import { fetchViewingScore } from '@/utilities/viewing-score-api';
 import { fetchCurrentWeather, type WeatherResponse } from '@/utilities/weather-api';
+import { getUserLevelProgressLabel, getUserLevelProgressPercent } from '@/utilities/level-progress';
 import { getOrRequestUserLocation } from '@/utilities/user-location-service';
 import * as usersService from '@/utilities/users-service';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const STARS = Array.from({ length: 150 }, (_, i) => ({
   top: (i * 23.7) % 100,
@@ -507,6 +509,8 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
   const firstName = getFirstName(user);
   const displayName = getDisplayName(user);
   const profileMeta = getProfileMeta(user);
+  const levelProgressLabel = getUserLevelProgressLabel(user);
+  const levelProgressPercent = getUserLevelProgressPercent(user);
   const [browserCoords, setBrowserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const { events, isLoading: isCalendarLoading, error: calendarError } = useCalendarEvents({
     ...(browserCoords ?? {}),
@@ -897,9 +901,17 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
               <View style={styles.profileRing}>
                 <View style={styles.profileAvatar} />
               </View>
-              <View style={{ marginLeft: spacing.md }}>
+              <View style={styles.profileText}>
                 <Text style={styles.previewTitle}>{displayName}</Text>
                 <Text style={styles.previewMeta}>{profileMeta}</Text>
+                {levelProgressLabel ? (
+                  <View style={styles.profileLevelProgress}>
+                    <View style={styles.profileLevelTrack}>
+                      <View style={[styles.profileLevelFill, { width: `${levelProgressPercent}%` as any }]} />
+                    </View>
+                    <Text style={styles.profileLevelMeta}>{levelProgressLabel}</Text>
+                  </View>
+                ) : null}
               </View>
             </Pressable>
           ) : null}
@@ -1683,7 +1695,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.md,
     width: '100%',
-    maxWidth: 1180,
+    maxWidth: dvw(1040),
     alignSelf: 'center',
   },
   topBar: {
@@ -1799,7 +1811,7 @@ const styles = StyleSheet.create({
   },
   moonStage: {
     width: '100%',
-    height: 160,
+    height: dvh(160),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1924,7 +1936,7 @@ const styles = StyleSheet.create({
   },
   issHeroStage: {
     width: '100%',
-    height: 220,
+    height: dvh(220),
     borderRadius: Radius.md,
     overflow: 'hidden',
     backgroundColor: Palette.bgDeep,
@@ -1989,7 +2001,7 @@ const styles = StyleSheet.create({
   },
   sectionLabelLine: {
     flex: 1,
-    height: 1,
+    height: dvh(1),
     backgroundColor: Palette.borderSoft,
   },
 
@@ -2007,10 +2019,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     flexBasis: '31%',
     flexGrow: 1,
-    minWidth: 230,
+    minWidth: dvw(230),
   },
   previewThumb: {
-    height: 168,
+    height: dvh(168),
     backgroundColor: Palette.bgDeep,
     borderBottomWidth: 1,
     borderBottomColor: Palette.borderSoft,
@@ -2102,7 +2114,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: '50%',
     marginLeft: -1.5,
-    width: 3,
+    width: dvw(3),
     height: '60%',
     backgroundColor: Palette.accentMoon,
     opacity: 0.5,
@@ -2124,14 +2136,14 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   issHeroThumb: {
-    minHeight: 220,
+    minHeight: dvh(220),
   },
   issHorizon: {
     position: 'absolute',
     left: 14,
     right: 14,
     bottom: 42,
-    height: 1,
+    height: dvh(1),
     backgroundColor: Palette.border,
   },
   issOrbitArc: {
@@ -2139,7 +2151,7 @@ const styles = StyleSheet.create({
     left: '10%',
     right: '10%',
     bottom: 24,
-    height: 104,
+    height: dvh(104),
     borderTopWidth: 2,
     borderLeftWidth: 1,
     borderRightWidth: 1,
@@ -2152,7 +2164,7 @@ const styles = StyleSheet.create({
     left: '8%',
     right: '8%',
     bottom: 48,
-    height: 120,
+    height: dvh(120),
   },
   issNode: {
     position: 'absolute',
@@ -2176,8 +2188,8 @@ const styles = StyleSheet.create({
     top: 52,
     left: '50%',
     marginLeft: -44,
-    width: 88,
-    height: 46,
+    width: dvw(88),
+    height: dvh(46),
     borderRadius: Radius.sm,
     backgroundColor: 'rgba(0, 212, 255, 0.08)',
     alignItems: 'center',
@@ -2190,8 +2202,8 @@ const styles = StyleSheet.create({
   issHeroStation: {
     top: 86,
     marginLeft: -58,
-    width: 116,
-    height: 60,
+    width: dvw(116),
+    height: dvh(60),
   },
   issStationIcon: {
     width: '100%',
@@ -2227,7 +2239,7 @@ const styles = StyleSheet.create({
   },
   issStatPill: {
     flex: 1,
-    minWidth: 0,
+    minWidth: dvw(0),
     backgroundColor: Palette.surface + 'E6',
     borderWidth: 1,
     borderColor: Palette.borderSoft,
@@ -2283,7 +2295,7 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     bottom: 28,
-    height: 112,
+    height: dvh(112),
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
@@ -2297,7 +2309,7 @@ const styles = StyleSheet.create({
     left: 14,
     right: 14,
     bottom: 34,
-    height: 1,
+    height: dvh(1),
     backgroundColor: Palette.border,
   },
   bodyDot: {
@@ -2320,7 +2332,7 @@ const styles = StyleSheet.create({
   },
   bodiesReadout: {
     flex: 1,
-    minWidth: 0,
+    minWidth: dvw(0),
     alignItems: 'center',
     backgroundColor: Palette.surface + 'CC',
     borderWidth: 1,
@@ -2352,7 +2364,7 @@ const styles = StyleSheet.create({
   },
   bodyNamePill: {
     flexBasis: 96,
-    minWidth: 0,
+    minWidth: dvw(0),
     backgroundColor: Palette.surface + 'E6',
     borderWidth: 1,
     borderColor: Palette.borderSoft,
@@ -2394,7 +2406,7 @@ const styles = StyleSheet.create({
   },
   spacewalkReadout: {
     flex: 1,
-    minWidth: 0,
+    minWidth: dvw(0),
     alignItems: 'center',
     backgroundColor: Palette.surface + 'CC',
     borderWidth: 1,
@@ -2417,7 +2429,7 @@ const styles = StyleSheet.create({
   },
   spacewalkCrewPill: {
     flexBasis: 96,
-    minWidth: 0,
+    minWidth: dvw(0),
     backgroundColor: Palette.surface + 'E6',
     borderWidth: 1,
     borderColor: Palette.borderSoft,
@@ -2492,7 +2504,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   weatherBarLabel: {
-    width: 50,
+    width: dvw(50),
     color: Palette.textSecondary,
     fontSize: 10,
     lineHeight: 12,
@@ -2500,7 +2512,7 @@ const styles = StyleSheet.create({
   },
   weatherBarTrack: {
     flex: 1,
-    height: 6,
+    height: dvh(6),
     borderRadius: 3,
     backgroundColor: Palette.surfaceRaised,
     overflow: 'hidden',
@@ -2511,7 +2523,7 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.accentMoon,
   },
   weatherBarValue: {
-    width: 34,
+    width: dvw(34),
     color: Palette.textPrimary,
     fontSize: 10,
     lineHeight: 12,
@@ -2527,6 +2539,34 @@ const styles = StyleSheet.create({
     borderColor: Palette.borderSoft,
     borderRadius: Radius.md,
     padding: spacing.md,
+  },
+  profileText: {
+    flex: 1,
+    minWidth: dvw(0),
+    marginLeft: spacing.md,
+  },
+  profileLevelProgress: {
+    marginTop: 8,
+    gap: 5,
+    width: '18dvw' as any,
+  },
+  profileLevelTrack: {
+    height: '0.7dvh' as any,
+    borderRadius: Radius.pill,
+    backgroundColor: Palette.surfaceRaised,
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    overflow: 'hidden',
+  },
+  profileLevelFill: {
+    height: '100%',
+    backgroundColor: Palette.accentMoon,
+  },
+  profileLevelMeta: {
+    color: Palette.textTertiary,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
   },
   profileRing: {
     width: 48,

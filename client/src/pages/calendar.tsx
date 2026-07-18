@@ -12,6 +12,7 @@ import { useCalendarEvents } from '@/hooks/use-calendar-events';
 import { getEventIconByType } from '@/lib/event-icons';
 import { getCalendarEventsForDate, getCalendarEventsForMonth } from '@/utilities/events-api';
 import { getOrRequestUserLocation } from '@/utilities/user-location-service';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const categories = ['Meteor Showers', 'Rocket Launches', 'Alignments', 'More Filters'];
 const MONTHS_BEHIND_TO_FETCH = 1;
@@ -412,7 +413,7 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
   selectedDayPanelDesktop: {
-    maxHeight: CALENDAR_GRID_MAX_HEIGHT,
+    maxHeight: dvh(CALENDAR_GRID_MAX_HEIGHT),
     alignSelf: 'flex-start',
     overflow: 'hidden',
   },
@@ -436,7 +437,7 @@ const styles = StyleSheet.create({
   },
   eventListScroll: {
     flex: 1,
-    minHeight: 0,
+    minHeight: dvh(0),
   },
   eventList: {
     gap: Spacing.two,

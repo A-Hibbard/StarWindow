@@ -5,6 +5,7 @@ import { StyleSheet, View, useColorScheme } from 'react-native';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AppSidebar } from '@/components/app-sidebar';
 import * as usersService from '@/utilities/users-service';
+import { dvw } from '@/utilities/responsive-dimensions';
 
 // export default function TabLayout() {
 //   const colorScheme = useColorScheme();
@@ -61,6 +62,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    minWidth: 0,
+    minWidth: dvw(0),
   },
 });

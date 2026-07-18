@@ -6,6 +6,7 @@ import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
 import { Spacing } from '@/constants/theme';
+import { dvw } from '@/utilities/responsive-dimensions';
 
 export function WebBadge() {
   const scheme = useColorScheme();
@@ -37,7 +38,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   badgeImage: {
-    width: 123,
+    width: dvw(123),
     aspectRatio: 123 / 24,
   },
 });

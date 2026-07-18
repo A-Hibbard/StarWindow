@@ -31,6 +31,7 @@ import {
   type EventListItem,
 } from '@/lib/events-api';
 import { describeVisibility } from '@/lib/event-visibility';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const LAUNCH_ACCENT = Palette.accentRed;
 const EVENT_ACCENT = Palette.accentMoon;
@@ -172,7 +173,7 @@ export function EventModal({
       setSaved(true);
       setSaveBusy(true);
       try {
-        const res = await saveUserEvent(userId, event.event_id);
+        const res = await saveUserEvent(event.event_id);
         setSavedId(res.user_event_id);
       } catch {
         setSaved(false); // rollback
@@ -357,7 +358,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: dvw(560),
     maxHeight: '90%',
   },
   dialog: {
@@ -365,7 +366,7 @@ const styles = StyleSheet.create({
     // clip, which is what gives the inner ScrollView a bounded height to scroll
     // within. Without this the content just overflows and can't be reached.
     flex: 1,
-    minHeight: 0,
+    minHeight: dvh(0),
     backgroundColor: Palette.surface,
     borderWidth: 1,
     borderColor: Palette.border,
@@ -402,14 +403,14 @@ const styles = StyleSheet.create({
     // Fill the bounded dialog and scroll when content exceeds it. minHeight:0 is
     // required on web so this flex item can shrink below its content height.
     flex: 1,
-    minHeight: 0,
+    minHeight: dvh(0),
   },
   scrollContent: {
     padding: 20,
     gap: 12,
   },
   hero: {
-    height: 200,
+    height: dvh(200),
     borderRadius: Radius.md,
     overflow: 'hidden',
     backgroundColor: Palette.bgDeep,

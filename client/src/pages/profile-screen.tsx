@@ -17,8 +17,10 @@ import { Palette, Radius } from '@/constants/tokens';
 import { fetchSavedUserEvents, type SavedUserEvent } from '@/lib/events-api';
 import * as eventTypesAPI from '@/utilities/event-types-api';
 import type { EventType } from '@/utilities/event-types-api';
+import { getUserLevelProgressLabel, getUserLevelProgressPercent } from '@/utilities/level-progress';
 import { getOrRequestUserLocation } from '@/utilities/user-location-service';
 import * as usersService from '@/utilities/users-service';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const STARS = Array.from({ length: 110 }, (_, i) => ({
   top: (i * 29.3) % 100,
@@ -66,6 +68,23 @@ export default function ProfileScreen() {
     if (!usersService.getToken()) router.replace('/');
   }, [router]);
 
+  useEffect(() => {
+    if (!usersService.getToken()) return;
+    let cancelled = false;
+    usersService
+      .getCurrentUser()
+      .then((currentUser) => {
+        if (!cancelled) setUser(currentUser);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const progressLabel = getUserLevelProgressLabel(user);
+  const progressPercent = getUserLevelProgressPercent(user);
+
   return (
     <SafeAreaView style={styles.app}>
       <View style={styles.starField}>
@@ -95,6 +114,14 @@ export default function ProfileScreen() {
             <Text style={styles.eyebrow}>PROFILE</Text>
             <Text style={styles.title}>{getDisplayName(user)}</Text>
             <Text style={styles.subtitle}>{getProfileLevel(user)}</Text>
+            {progressLabel ? (
+              <View style={styles.levelProgress}>
+                <View style={styles.levelTrack}>
+                  <View style={[styles.levelFill, { width: `${progressPercent}%` as any }]} />
+                </View>
+                <Text style={styles.levelMeta}>{progressLabel}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -543,7 +570,7 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
-    minWidth: 0,
+    minWidth: dvw(0),
   },
   eyebrow: {
     color: Palette.accentMoonDim,
@@ -562,6 +589,28 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: 6,
   },
+  levelProgress: {
+    marginTop: 10,
+    gap: 6,
+    width: '24dvw' as any,
+  },
+  levelTrack: {
+    height: '0.8dvh' as any,
+    borderRadius: Radius.pill,
+    backgroundColor: Palette.surfaceRaised,
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    overflow: 'hidden',
+  },
+  levelFill: {
+    height: '100%',
+    backgroundColor: Palette.accentMoon,
+  },
+  levelMeta: {
+    color: Palette.textTertiary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   tabBar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -573,7 +622,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   tabButton: {
-    minHeight: 42,
+    minHeight: dvh(42),
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: 'transparent',
@@ -626,7 +675,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    minHeight: 120,
+    minHeight: dvh(120),
   },
   loadingText: {
     color: Palette.textSecondary,
@@ -641,7 +690,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   input: {
-    minHeight: 46,
+    minHeight: dvh(46),
     borderWidth: 1,
     borderColor: Palette.inputBorder,
     borderRadius: Radius.sm,
@@ -658,7 +707,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   primaryButton: {
-    minHeight: 44,
+    minHeight: dvh(44),
     borderRadius: Radius.md,
     backgroundColor: Palette.accentMoon,
     paddingHorizontal: 18,
@@ -671,7 +720,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   secondaryButton: {
-    minHeight: 44,
+    minHeight: dvh(44),
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Palette.border,
@@ -701,7 +750,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   preferencePill: {
-    minHeight: 38,
+    minHeight: dvh(38),
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: Palette.border,
@@ -726,7 +775,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyState: {
-    minHeight: 120,
+    minHeight: dvh(120),
     alignItems: 'flex-start',
     justifyContent: 'center',
     gap: 6,

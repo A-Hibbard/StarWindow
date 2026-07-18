@@ -9,12 +9,16 @@
 // double-tap on "Save" can't create duplicate saves for the same user+event.
 
 const database = require("../../config/database");
+const levelingQueries = require("./leveling");
 
 module.exports = {
   saveUserEvent,
   deleteUserEvent,
   getUserEvent,
   getSavedEventsForUser,
+  updateUserEventDetails,
+  addUserEventImage,
+  deleteUserEventImage,
 };
 
 /**
@@ -25,27 +29,48 @@ module.exports = {
  * @returns {Promise<{user_event_id, user_id, event_id, already_saved: boolean}>}
  */
 async function saveUserEvent(userId, eventId) {
-  const inserted = await database.query(
-    `
-      INSERT INTO public.user_events (user_id, event_id)
-      VALUES ($1, $2)
-      ON CONFLICT (user_id, event_id) DO NOTHING
-      RETURNING user_event_id, user_id, event_id
-    `,
-    [userId, eventId]
-  );
+  const client = await database.connect();
 
-  if (inserted.rows.length > 0) {
-    return { ...inserted.rows[0], already_saved: false };
+  try {
+    await client.query("BEGIN");
+
+    const inserted = await client.query(
+      `
+        INSERT INTO public.user_events (user_id, event_id)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id, event_id) DO NOTHING
+        RETURNING user_event_id, user_id, event_id
+      `,
+      [userId, eventId]
+    );
+
+    if (inserted.rows.length > 0) {
+      const progress = await levelingQueries.awardUserPoints(
+        userId,
+        "save_event",
+        "user_event",
+        sourceKeys.save(inserted.rows[0].user_event_id),
+        client
+      );
+      await client.query("COMMIT");
+      return { ...inserted.rows[0], already_saved: false, progress };
+    }
+
+    // Conflict -> it was already saved; return the existing row so the client can
+    // still learn its user_event_id (needed to unsave).
+    const existing = await client.query(
+      "SELECT user_event_id, user_id, event_id FROM public.user_events WHERE user_id = $1 AND event_id = $2 LIMIT 1",
+      [userId, eventId]
+    );
+
+    await client.query("COMMIT");
+    return { ...existing.rows[0], already_saved: true, progress: null };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
-
-  // Conflict -> it was already saved; return the existing row so the client can
-  // still learn its user_event_id (needed to unsave).
-  const existing = await database.query(
-    "SELECT user_event_id, user_id, event_id FROM public.user_events WHERE user_id = $1 AND event_id = $2 LIMIT 1",
-    [userId, eventId]
-  );
-  return { ...existing.rows[0], already_saved: true };
 }
 
 /**
@@ -53,12 +78,59 @@ async function saveUserEvent(userId, eventId) {
  * @param {number|string} userEventId
  * @returns {Promise<boolean>} true if a row was deleted.
  */
-async function deleteUserEvent(userEventId) {
-  const result = await database.query(
-    "DELETE FROM public.user_events WHERE user_event_id = $1 RETURNING user_event_id",
-    [userEventId]
-  );
-  return result.rows.length > 0;
+async function deleteUserEvent(userEventId, userId = null) {
+  const client = await database.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const params = userId == null ? [userEventId] : [userEventId, userId];
+    const ownershipClause = userId == null ? "" : "AND ue.user_id = $2";
+    const existing = await client.query(
+      `
+        SELECT
+          ue.user_event_id,
+          ue.user_id,
+          ue.event_id,
+          ue.event_comment,
+          ue.event_rating,
+          COUNT(uei.user_event_image_id) AS image_count
+        FROM public.user_events ue
+        LEFT JOIN public.user_event_images uei ON uei.user_event_id = ue.user_event_id
+        WHERE ue.user_event_id = $1
+          ${ownershipClause}
+        GROUP BY ue.user_event_id, ue.user_id, ue.event_id, ue.event_comment, ue.event_rating
+        LIMIT 1
+      `,
+      params
+    );
+
+    if (existing.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const savedEvent = existing.rows[0];
+    const reversals = await reverseSavedEventMechanics(savedEvent, client);
+
+    const deleted = await client.query(
+      `
+        DELETE FROM public.user_events
+        WHERE user_event_id = $1
+          AND user_id = $2
+        RETURNING user_event_id
+      `,
+      [savedEvent.user_event_id, savedEvent.user_id]
+    );
+
+    await client.query("COMMIT");
+    return { deleted: deleted.rows.length > 0, user_event_id: savedEvent.user_event_id, reversals };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**
@@ -68,10 +140,237 @@ async function deleteUserEvent(userEventId) {
  */
 async function getUserEvent(userId, eventId) {
   const result = await database.query(
-    "SELECT user_event_id FROM public.user_events WHERE user_id = $1 AND event_id = $2 LIMIT 1",
+    "SELECT user_event_id, event_comment, event_rating FROM public.user_events WHERE user_id = $1 AND event_id = $2 LIMIT 1",
     [userId, eventId]
   );
   return result.rows[0] || null;
+}
+
+async function updateUserEventDetails(userId, userEventId, data) {
+  const client = await database.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const existing = await client.query(
+      `
+        SELECT user_event_id, user_id, event_id, event_comment, event_rating
+        FROM public.user_events
+        WHERE user_event_id = $1
+          AND user_id = $2
+        LIMIT 1
+      `,
+      [userEventId, userId]
+    );
+
+    if (existing.rows.length === 0) {
+      const error = new Error("Saved event not found");
+      error.status = 404;
+      throw error;
+    }
+
+    const previous = existing.rows[0];
+    const hasComment = Object.prototype.hasOwnProperty.call(data, "event_comment");
+    const hasRating = Object.prototype.hasOwnProperty.call(data, "event_rating");
+    const nextComment = hasComment ? normalizeComment(data.event_comment) : previous.event_comment;
+    const nextRating = hasRating ? normalizeRating(data.event_rating) : previous.event_rating;
+
+    const updated = await client.query(
+      `
+        UPDATE public.user_events
+        SET event_comment = $3,
+            event_rating = $4
+        WHERE user_event_id = $1
+          AND user_id = $2
+        RETURNING user_event_id, user_id, event_id, event_comment, event_rating
+      `,
+      [userEventId, userId, nextComment, nextRating]
+    );
+
+    const awards = [];
+    const reversals = [];
+    if (hasMeaningfulComment(nextComment) && !hasMeaningfulComment(previous.event_comment)) {
+      awards.push(
+        await levelingQueries.awardUserPoints(
+          userId,
+          "comment_event",
+          "user_event",
+          sourceKeys.comment(userEventId),
+          client
+        )
+      );
+    }
+
+    if (!hasMeaningfulComment(nextComment) && hasMeaningfulComment(previous.event_comment)) {
+      reversals.push(
+        await reverseWithFallback(
+          userId,
+          "comment_event",
+          "user_event",
+          [sourceKeys.comment(userEventId), sourceKeys.legacyEvent(previous.event_id)],
+          client
+        )
+      );
+    }
+
+    if (nextRating != null && previous.event_rating == null) {
+      awards.push(
+        await levelingQueries.awardUserPoints(
+          userId,
+          "rate_event",
+          "user_event",
+          sourceKeys.rating(userEventId),
+          client
+        )
+      );
+    }
+
+    if (nextRating == null && previous.event_rating != null) {
+      reversals.push(
+        await reverseWithFallback(
+          userId,
+          "rate_event",
+          "user_event",
+          [sourceKeys.rating(userEventId), sourceKeys.legacyEvent(previous.event_id)],
+          client
+        )
+      );
+    }
+
+    await client.query("COMMIT");
+    return { ...updated.rows[0], awards, reversals };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function addUserEventImage(userId, userEventId, data) {
+  const imageUrl = String(data?.image_url || data?.imageUrl || "").trim();
+  const caption = normalizeComment(data?.caption);
+
+  if (!imageUrl) {
+    const error = new Error("image_url is required");
+    error.status = 400;
+    throw error;
+  }
+
+  const client = await database.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const savedEvent = await client.query(
+      `
+        SELECT
+          ue.user_event_id,
+          COUNT(uei.user_event_image_id) AS image_count
+        FROM public.user_events ue
+        LEFT JOIN public.user_event_images uei ON uei.user_event_id = ue.user_event_id
+        WHERE ue.user_event_id = $1
+          AND ue.user_id = $2
+        GROUP BY ue.user_event_id
+        LIMIT 1
+      `,
+      [userEventId, userId]
+    );
+
+    if (savedEvent.rows.length === 0) {
+      const error = new Error("Saved event not found");
+      error.status = 404;
+      throw error;
+    }
+
+    const inserted = await client.query(
+      `
+        INSERT INTO public.user_event_images (user_event_id, image_url, caption)
+        VALUES ($1, $2, $3)
+        RETURNING user_event_image_id, user_event_id, image_url, caption, created_at
+      `,
+      [userEventId, imageUrl, caption]
+    );
+
+    const previousImageCount = Number(savedEvent.rows[0].image_count ?? 0);
+    const progress =
+      previousImageCount === 0
+        ? await levelingQueries.awardUserPoints(
+            userId,
+            "add_saved_event_image",
+            "user_event_image",
+            sourceKeys.image(userEventId),
+            client
+          )
+        : null;
+
+    await client.query("COMMIT");
+    return { ...inserted.rows[0], progress };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function deleteUserEventImage(userId, userEventId, userEventImageId) {
+  const client = await database.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const existing = await client.query(
+      `
+        SELECT
+          uei.user_event_image_id,
+          ue.user_event_id,
+          ue.user_id
+        FROM public.user_event_images uei
+        JOIN public.user_events ue ON ue.user_event_id = uei.user_event_id
+        WHERE uei.user_event_image_id = $1
+          AND ue.user_event_id = $2
+          AND ue.user_id = $3
+        LIMIT 1
+      `,
+      [userEventImageId, userEventId, userId]
+    );
+
+    if (existing.rows.length === 0) {
+      const error = new Error("Saved event image not found");
+      error.status = 404;
+      throw error;
+    }
+
+    await client.query(
+      "DELETE FROM public.user_event_images WHERE user_event_image_id = $1",
+      [userEventImageId]
+    );
+
+    const remaining = await client.query(
+      "SELECT COUNT(*) AS image_count FROM public.user_event_images WHERE user_event_id = $1",
+      [userEventId]
+    );
+
+    const progress =
+      Number(remaining.rows[0]?.image_count ?? 0) === 0
+        ? await reverseWithFallback(
+            userId,
+            "add_saved_event_image",
+            "user_event_image",
+            [sourceKeys.image(userEventId), sourceKeys.legacyImage(userEventId)],
+            client
+          )
+        : null;
+
+    await client.query("COMMIT");
+    return { deleted: true, user_event_image_id: userEventImageId, progress };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**
@@ -87,6 +386,19 @@ async function getSavedEventsForUser(userId) {
         ue.user_event_id,
         ue.event_comment,
         ue.event_rating,
+        COALESCE((
+          SELECT json_agg(
+            json_build_object(
+              'user_event_image_id', uei.user_event_image_id,
+              'image_url', uei.image_url,
+              'caption', uei.caption,
+              'created_at', uei.created_at
+            )
+            ORDER BY uei.created_at DESC, uei.user_event_image_id DESC
+          )
+          FROM public.user_event_images uei
+          WHERE uei.user_event_id = ue.user_event_id
+        ), '[]'::json) AS user_event_images,
         COALESCE(rl.launch_id, e.event_id) AS id,
         ue.event_id,
         CASE WHEN rl.launch_id IS NULL THEN 'event' ELSE 'launch' END AS category,
@@ -144,6 +456,7 @@ async function getSavedEventsForUser(userId) {
     user_event_id: row.user_event_id,
     event_comment: row.event_comment,
     event_rating: row.event_rating,
+    user_event_images: row.user_event_images || [],
     id: row.id,
     event_id: row.event_id,
     category: row.category,
@@ -171,4 +484,107 @@ async function getSavedEventsForUser(userId) {
           }
         : null,
   }));
+}
+
+function normalizeComment(value) {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeRating(value) {
+  if (value == null || value === "") return null;
+  const rating = Number(value);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    const error = new Error("event_rating must be an integer from 1 to 5");
+    error.status = 400;
+    throw error;
+  }
+  return rating;
+}
+
+function hasMeaningfulComment(value) {
+  return String(value || "").trim().length >= 3;
+}
+
+const sourceKeys = {
+  save: (userEventId) => `user_event:${userEventId}:save`,
+  comment: (userEventId) => `user_event:${userEventId}:comment`,
+  rating: (userEventId) => `user_event:${userEventId}:rating`,
+  image: (userEventId) => `user_event:${userEventId}:image`,
+  legacyEvent: (eventId) => `event:${eventId}`,
+  legacyImage: (userEventId) => `user_event:${userEventId}:first_image`,
+};
+
+async function reverseSavedEventMechanics(savedEvent, client) {
+  const userId = savedEvent.user_id;
+  const userEventId = savedEvent.user_event_id;
+  const eventId = savedEvent.event_id;
+  const reversals = [];
+
+  if (Number(savedEvent.image_count ?? 0) > 0) {
+    reversals.push(
+      await reverseWithFallback(
+        userId,
+        "add_saved_event_image",
+        "user_event_image",
+        [sourceKeys.image(userEventId), sourceKeys.legacyImage(userEventId)],
+        client
+      )
+    );
+  }
+
+  if (savedEvent.event_rating != null) {
+    reversals.push(
+      await reverseWithFallback(
+        userId,
+        "rate_event",
+        "user_event",
+        [sourceKeys.rating(userEventId), sourceKeys.legacyEvent(eventId)],
+        client
+      )
+    );
+  }
+
+  if (hasMeaningfulComment(savedEvent.event_comment)) {
+    reversals.push(
+      await reverseWithFallback(
+        userId,
+        "comment_event",
+        "user_event",
+        [sourceKeys.comment(userEventId), sourceKeys.legacyEvent(eventId)],
+        client
+      )
+    );
+  }
+
+  reversals.push(
+    await reverseWithFallback(
+      userId,
+      "save_event",
+      "user_event",
+      [sourceKeys.save(userEventId), sourceKeys.legacyEvent(eventId)],
+      client
+    )
+  );
+
+  return reversals.filter(Boolean);
+}
+
+async function reverseWithFallback(userId, actionCode, sourceType, possibleSourceKeys, client) {
+  let lastResult = null;
+
+  for (const sourceKey of possibleSourceKeys) {
+    const result = await levelingQueries.reverseUserPoints(
+      userId,
+      actionCode,
+      sourceType,
+      sourceKey,
+      client
+    );
+    lastResult = result;
+    if (result.reversed) return result;
+  }
+
+  return lastResult;
 }

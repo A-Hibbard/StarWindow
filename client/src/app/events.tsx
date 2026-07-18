@@ -22,6 +22,7 @@ import { Palette, Radius } from '@/constants/tokens';
 import { fetchEventsList, type EventListItem } from '@/lib/events-api';
 import { getOrRequestUserLocation } from '@/utilities/user-location-service';
 import { getUser } from '@/utilities/users-service';
+import { dvw } from '@/utilities/responsive-dimensions';
 
 const ALL = 'All';
 
@@ -352,7 +353,7 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
     gap: 12,
     width: '100%',
-    maxWidth: 800,
+    maxWidth: dvw(800),
     alignSelf: 'center',
   },
   centerState: {

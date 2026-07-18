@@ -35,15 +35,15 @@ router.get("/saved", ensureLoggedIn, async (req, res) => {
   }
 });
 
-// POST /api/user-events  { user_id, event_id }
+// POST /api/user-events  { event_id }
 // Save an event for a user. Idempotent (won't duplicate an existing save).
-router.post("/", async (req, res) => {
-  const { user_id, event_id } = req.body || {};
-  if (!user_id || !event_id) {
-    return res.status(400).json({ error: "user_id and event_id are required", status: 400 });
+router.post("/", ensureLoggedIn, async (req, res) => {
+  const { event_id } = req.body || {};
+  if (!event_id) {
+    return res.status(400).json({ error: "event_id is required", status: 400 });
   }
   try {
-    const saved = await userEventQueries.saveUserEvent(Number(user_id), event_id);
+    const saved = await userEventQueries.saveUserEvent(req.user.user_id, event_id);
     // 200 if it already existed, 201 if newly created.
     res.status(saved.already_saved ? 200 : 201).json(saved);
   } catch (error) {
@@ -53,13 +53,61 @@ router.post("/", async (req, res) => {
 });
 
 // DELETE /api/user-events/:id   (:id = user_event_id) — unsave.
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", ensureLoggedIn, async (req, res) => {
   try {
-    const deleted = await userEventQueries.deleteUserEvent(req.params.id);
-    if (!deleted) {
+    const result = await userEventQueries.deleteUserEvent(req.params.id, req.user.user_id);
+    if (!result?.deleted) {
       return res.status(404).json({ error: "Saved event not found", status: 404 });
     }
-    res.json({ deleted: true, user_event_id: req.params.id });
+    res.json(result);
+  } catch (error) {
+    const status = error.status || 500;
+    res.status(status).json({ error: error.message, status });
+  }
+});
+
+// PATCH /api/user-events/:id
+// Update the saved event's private comment/rating.
+router.patch("/:id", ensureLoggedIn, async (req, res) => {
+  try {
+    const updated = await userEventQueries.updateUserEventDetails(
+      req.user.user_id,
+      req.params.id,
+      req.body || {}
+    );
+    res.json(updated);
+  } catch (error) {
+    const status = error.status || 500;
+    res.status(status).json({ error: error.message, status });
+  }
+});
+
+// POST /api/user-events/:id/images
+// Attach an image URL to a saved event. First image per saved event awards points.
+router.post("/:id/images", ensureLoggedIn, async (req, res) => {
+  try {
+    const image = await userEventQueries.addUserEventImage(
+      req.user.user_id,
+      req.params.id,
+      req.body || {}
+    );
+    res.status(201).json(image);
+  } catch (error) {
+    const status = error.status || 500;
+    res.status(status).json({ error: error.message, status });
+  }
+});
+
+// DELETE /api/user-events/:id/images/:imageId
+// Remove an attached image. Deleting the last image reverses image points.
+router.delete("/:id/images/:imageId", ensureLoggedIn, async (req, res) => {
+  try {
+    const result = await userEventQueries.deleteUserEventImage(
+      req.user.user_id,
+      req.params.id,
+      req.params.imageId
+    );
+    res.json(result);
   } catch (error) {
     const status = error.status || 500;
     res.status(status).json({ error: error.message, status });

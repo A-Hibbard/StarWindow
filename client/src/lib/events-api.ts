@@ -54,6 +54,63 @@ export interface SavedUserEvent extends EventListItem {
   user_event_id: string;
   event_comment: string | null;
   event_rating: number | null;
+  user_event_images?: SavedUserEventImage[];
+}
+
+export interface SavedUserEventImage {
+  user_event_image_id: string;
+  image_url: string;
+  caption: string | null;
+  created_at: string;
+}
+
+export interface UserPointAward {
+  awarded: boolean;
+  reversed?: boolean;
+  points_awarded: number;
+  points_reversed?: number;
+  total_points: number;
+  status_id: number | null;
+  status: string | null;
+  next_level_points: number | null;
+  points_to_next_level: number;
+}
+
+export interface SaveUserEventResponse {
+  user_event_id: string;
+  already_saved: boolean;
+  progress: UserPointAward | null;
+}
+
+export interface UpdateSavedEventResponse {
+  user_event_id: string;
+  user_id: number;
+  event_id: number | string;
+  event_comment: string | null;
+  event_rating: number | null;
+  awards: UserPointAward[];
+  reversals?: UserPointAward[];
+}
+
+export interface UserEventImage {
+  user_event_image_id: string;
+  user_event_id: string;
+  image_url: string;
+  caption: string | null;
+  created_at: string;
+  progress: UserPointAward | null;
+}
+
+export interface DeleteUserEventResponse {
+  deleted: boolean;
+  user_event_id: string;
+  reversals: UserPointAward[];
+}
+
+export interface DeleteUserEventImageResponse {
+  deleted: boolean;
+  user_event_image_id: string;
+  progress: UserPointAward | null;
 }
 
 export interface ViewingScoreResponse {
@@ -87,23 +144,20 @@ export async function checkEventSaved(
 }
 
 /** Save an event for a user (POST /api/user-events). Idempotent server-side. */
-export async function saveUserEvent(
-  userId: number,
-  eventId: number | string
-): Promise<{ user_event_id: string; already_saved: boolean }> {
-  const res = await fetch(`${API_BASE}/api/user-events`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, event_id: eventId }),
-  });
-  if (!res.ok) throw new Error(`save failed: ${res.status}`);
-  return res.json();
+export async function saveUserEvent(eventId: number | string): Promise<SaveUserEventResponse> {
+  return sendRequest(
+    `${API_BASE}/api/user-events`,
+    'POST',
+    { event_id: eventId }
+  );
 }
 
 /** Unsave a previously-saved event (DELETE /api/user-events/:id). */
-export async function deleteUserEvent(userEventId: number | string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/user-events/${userEventId}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`unsave failed: ${res.status}`);
+export async function deleteUserEvent(userEventId: number | string): Promise<DeleteUserEventResponse> {
+  return sendRequest<null, DeleteUserEventResponse>(
+    `${API_BASE}/api/user-events/${userEventId}`,
+    'DELETE'
+  );
 }
 
 /**
@@ -114,6 +168,38 @@ export async function fetchEventsList(signal?: AbortSignal): Promise<EventListIt
   const res = await fetch(`${API_BASE}/api/events/list`, { signal });
   if (!res.ok) throw new Error(`events list request failed: ${res.status}`);
   return res.json();
+}
+
+export function updateSavedUserEvent(
+  userEventId: number | string,
+  data: { event_comment?: string | null; event_rating?: number | null }
+): Promise<UpdateSavedEventResponse> {
+  return sendRequest<typeof data, UpdateSavedEventResponse>(
+    `${API_BASE}/api/user-events/${userEventId}`,
+    'PATCH',
+    data
+  );
+}
+
+export function addSavedUserEventImage(
+  userEventId: number | string,
+  data: { image_url: string; caption?: string | null }
+): Promise<UserEventImage> {
+  return sendRequest<typeof data, UserEventImage>(
+    `${API_BASE}/api/user-events/${userEventId}/images`,
+    'POST',
+    data
+  );
+}
+
+export function deleteSavedUserEventImage(
+  userEventId: number | string,
+  userEventImageId: number | string
+): Promise<DeleteUserEventImageResponse> {
+  return sendRequest<null, DeleteUserEventImageResponse>(
+    `${API_BASE}/api/user-events/${userEventId}/images/${userEventImageId}`,
+    'DELETE'
+  );
 }
 
 /** Fetch every event saved by the currently logged-in user. */
