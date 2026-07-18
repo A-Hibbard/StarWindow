@@ -1,5 +1,11 @@
 import sendRequest from './send-request';
-import type { AuthUser, LoginCredentials, SignUpData } from './users-service';
+import type {
+  AuthUser,
+  LoginCredentials,
+  SignUpData,
+  UserLevelSummary,
+  UserPointHistoryItem,
+} from './users-service';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL;
 const BASE_URL = `${API_BASE}/api/users`;
@@ -18,6 +24,15 @@ export function checkToken(): Promise<string> {
 
 export function getCurrentUser(): Promise<AuthUser> {
   return sendRequest(`${BASE_URL}/me`);
+}
+
+export function getUserLevel(): Promise<UserLevelSummary> {
+  return sendRequest(`${BASE_URL}/level`);
+}
+
+export function getUserPointHistory(limit?: number): Promise<UserPointHistoryItem[]> {
+  const params = limit ? `?limit=${encodeURIComponent(String(limit))}` : '';
+  return sendRequest(`${BASE_URL}/points/history${params}`);
 }
 
 export function updateCurrentUser(userData: Pick<AuthUser, 'f_name' | 'l_name' | 'email'>): Promise<string> {

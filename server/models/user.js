@@ -44,7 +44,8 @@ async function findOne(req) {
         u.l_name,
         u.password,
         u.status_id,
-        us.status
+        us.status,
+        us.min_points
       FROM public.users u
       JOIN public.user_statuses us ON us.status_id = u.status_id
       WHERE lower(trim(u.email)) = $1
@@ -63,7 +64,8 @@ async function findById(userId) {
         u.f_name,
         u.l_name,
         u.status_id,
-        us.status
+        us.status,
+        us.min_points
       FROM public.users u
       JOIN public.user_statuses us ON us.status_id = u.status_id
       WHERE u.user_id = $1

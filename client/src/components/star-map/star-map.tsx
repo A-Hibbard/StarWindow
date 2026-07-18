@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Palette, Radius } from '@/constants/tokens';
 import type { StarMapProps } from './types';
+import { dvh } from '@/utilities/responsive-dimensions';
 
 /**
  * Native (iOS/Android) placeholder. Leaflet is DOM-only and cannot run on
@@ -30,7 +31,7 @@ export function StarMap({ spots = [], style }: StarMapProps) {
 const styles = StyleSheet.create({
   frame: {
     width: '100%',
-    minHeight: 320,
+    minHeight: dvh(320),
     borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Palette.cardBorder,

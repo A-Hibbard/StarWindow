@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Animated, Dimensions } from 'react-native';
 import { Palette } from '@/constants/tokens';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const getScreen = () => Dimensions.get('window');
 
@@ -77,8 +78,8 @@ export function ShootingStar({ delay, glow = true }: { delay: number; glow?: boo
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <View style={{
-          width: 60,
-          height: 2,
+          width: dvw(60),
+          height: dvh(2),
           backgroundColor: Palette.accent,
           opacity: 0.6,
           borderRadius: 2,

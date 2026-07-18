@@ -16,6 +16,7 @@ import { Audio } from 'expo-av';
 import { ShootingStar } from '@/components/shooting-star';
 import { Palette, Radius } from '@/constants/tokens';
 import * as usersService from '@/utilities/users-service';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const getScreen = () => Dimensions.get('window');
 
@@ -297,7 +298,7 @@ const styles = StyleSheet.create({
   },
   centerWrapper: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: dvw(420),
     maxHeight: '100%',
     alignItems: 'center',
     justifyContent: 'center',
@@ -381,7 +382,7 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    height: 1,
+    height: dvh(1),
     backgroundColor: Palette.divider,
   },
   dividerText: {

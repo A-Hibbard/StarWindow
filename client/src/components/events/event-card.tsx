@@ -10,6 +10,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { fallbackIconSource } from '@/components/events/event-fallback-icon';
 import { Palette, Radius } from '@/constants/tokens';
 import type { EventListItem } from '@/lib/events-api';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const DESCRIPTION_MAX = 140;
 
@@ -137,7 +138,7 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   thumb: {
-    width: 120,
+    width: dvw(120),
     backgroundColor: Palette.bgDeep,
   },
   thumbImage: {
@@ -146,7 +147,7 @@ const styles = StyleSheet.create({
   },
   thumbFallback: {
     flex: 1,
-    minHeight: 120,
+    minHeight: dvh(120),
     alignItems: 'center',
     justifyContent: 'center',
   },

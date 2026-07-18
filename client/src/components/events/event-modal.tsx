@@ -31,6 +31,7 @@ import {
   type EventListItem,
 } from '@/lib/events-api';
 import { describeVisibility } from '@/lib/event-visibility';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const LAUNCH_ACCENT = Palette.accentRed;
 const EVENT_ACCENT = Palette.accentMoon;
@@ -58,6 +59,7 @@ export function EventModal({
 }) {
   const isLaunch = event.category === 'launch';
   const accent = isLaunch ? LAUNCH_ACCENT : EVENT_ACCENT;
+  const canSaveEvent = !String(event.event_id).startsWith('dashboard-');
   const fallbackIcon = fallbackIconSource(event);
   const { visible, tooFar, distanceMiles } = describeVisibility(event, userLat, userLon);
   const hasWebcast = Boolean(event.video_url) || event.webcast_live;
@@ -151,7 +153,7 @@ export function EventModal({
 
   // --- seed saved state ---
   useEffect(() => {
-    if (userId == null) return;
+    if (userId == null || !canSaveEvent) return;
     const controller = new AbortController();
     checkEventSaved(userId, event.event_id, controller.signal)
       .then((r) => {
@@ -160,10 +162,10 @@ export function EventModal({
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [userId, event.event_id]);
+  }, [canSaveEvent, userId, event.event_id]);
 
   async function handleSaveToggle() {
-    if (userId == null || saveBusy) return;
+    if (!canSaveEvent || userId == null || saveBusy) return;
     setSaveError(null);
 
     if (!saved) {
@@ -171,7 +173,7 @@ export function EventModal({
       setSaved(true);
       setSaveBusy(true);
       try {
-        const res = await saveUserEvent(userId, event.event_id);
+        const res = await saveUserEvent(event.event_id);
         setSavedId(res.user_event_id);
       } catch {
         setSaved(false); // rollback
@@ -313,13 +315,13 @@ export function EventModal({
                 style={[
                   styles.saveBtn,
                   saved && styles.saveBtnSaved,
-                  (userId == null || saveBusy) && styles.saveBtnDisabled,
+                  (!canSaveEvent || userId == null || saveBusy) && styles.saveBtnDisabled,
                 ]}
                 onPress={handleSaveToggle}
-                disabled={userId == null || saveBusy}
+                disabled={!canSaveEvent || userId == null || saveBusy}
                 aria-label={saved ? 'Remove saved event' : 'Save event'}>
                 <Text style={[styles.saveBtnText, saved && styles.saveBtnTextSaved]}>
-                  {userId == null ? 'Log in to save' : saved ? '✓ Saved' : 'Save event'}
+                  {!canSaveEvent ? 'Dashboard preview' : userId == null ? 'Log in to save' : saved ? '✓ Saved' : 'Save event'}
                 </Text>
               </Pressable>
               {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}
@@ -356,7 +358,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: dvw(560),
     maxHeight: '90%',
   },
   dialog: {
@@ -364,7 +366,7 @@ const styles = StyleSheet.create({
     // clip, which is what gives the inner ScrollView a bounded height to scroll
     // within. Without this the content just overflows and can't be reached.
     flex: 1,
-    minHeight: 0,
+    minHeight: dvh(0),
     backgroundColor: Palette.surface,
     borderWidth: 1,
     borderColor: Palette.border,
@@ -401,14 +403,14 @@ const styles = StyleSheet.create({
     // Fill the bounded dialog and scroll when content exceeds it. minHeight:0 is
     // required on web so this flex item can shrink below its content height.
     flex: 1,
-    minHeight: 0,
+    minHeight: dvh(0),
   },
   scrollContent: {
     padding: 20,
     gap: 12,
   },
   hero: {
-    height: 200,
+    height: dvh(200),
     borderRadius: Radius.md,
     overflow: 'hidden',
     backgroundColor: Palette.bgDeep,

@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { Keyframe, Easing } from 'react-native-reanimated';
 
 import classes from './animated-icon.module.css';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 const DURATION = 300;
 
 export function AnimatedSplashOverlay() {
@@ -97,8 +98,8 @@ const styles = StyleSheet.create({
   },
   image: {
     position: 'absolute',
-    width: 76,
-    height: 71,
+    width: dvw(76),
+    height: dvh(71),
   },
   background: {
     width: 128,

@@ -38,11 +38,13 @@ import {
 import { fetchIssPasses, type IssPass } from '@/utilities/iss-api';
 import { fetchNearestLocation } from '@/utilities/location-api';
 import { fetchMoonPhase } from '@/utilities/moon-api';
-import { fetchNasaImageNews, type NewsArticle } from '@/utilities/news-api';
+import { fetchNasaNews, type NewsArticle } from '@/utilities/news-api';
 import { fetchViewingScore } from '@/utilities/viewing-score-api';
 import { fetchCurrentWeather, type WeatherResponse } from '@/utilities/weather-api';
+import { getUserLevelProgressLabel, getUserLevelProgressPercent } from '@/utilities/level-progress';
 import { getOrRequestUserLocation } from '@/utilities/user-location-service';
 import * as usersService from '@/utilities/users-service';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 const STARS = Array.from({ length: 150 }, (_, i) => ({
   top: (i * 23.7) % 100,
@@ -339,11 +341,24 @@ function getWeatherImageSource(conditions?: string | null) {
   return require('@/assets/images/weather-clouds.png');
 }
 
+function isMoonBody(bodyName?: string | null) {
+  return bodyName?.trim().toLowerCase() === 'moon';
+}
+
 function getTopVisibleBodies(bodies: VisibleBody[]) {
-  return [...bodies]
+  const sortedBodies = [...bodies]
     .filter((body) => body.body)
-    .sort((a, b) => (toNumber(b.altitude_degrees) ?? -Infinity) - (toNumber(a.altitude_degrees) ?? -Infinity))
-    .slice(0, 4);
+    .sort((a, b) => (toNumber(b.altitude_degrees) ?? -Infinity) - (toNumber(a.altitude_degrees) ?? -Infinity));
+
+  if (isMoonBody(sortedBodies[0]?.body)) {
+    const nextBodyIndex = sortedBodies.findIndex((body) => !isMoonBody(body.body));
+    if (nextBodyIndex > 0) {
+      const [nextBody] = sortedBodies.splice(nextBodyIndex, 1);
+      sortedBodies.unshift(nextBody);
+    }
+  }
+
+  return sortedBodies.slice(0, 4);
 }
 
 function formatBodiesBadge({
@@ -438,13 +453,13 @@ function formatNewsBadge({
 }) {
   if (isLoading) return 'LOADING';
   if (error) return 'UNAVAILABLE';
-  return article?.source === 'NASA Images' ? 'NASA IMAGE' : 'NASA';
+  return article?.source === 'NASA News' ? 'NASA NEWS' : 'NASA';
 }
 
 function formatNewsMeta(article: NewsArticle | null) {
-  if (!article) return 'No NASA image story found in the current feed.';
+  if (!article) return 'No NASA news article found in the current feed.';
 
-  return [article.source, formatNewsDate(article.published_at)].filter(Boolean).join(' | ') || 'NASA image library';
+  return [article.source, formatNewsDate(article.published_at)].filter(Boolean).join(' | ') || 'NASA news';
 }
 
 function openExternalUrl(url?: string | null) {
@@ -456,6 +471,30 @@ function openExternalUrl(url?: string | null) {
   }
 
   void Linking.openURL(url);
+}
+
+type EventDetailRouteParams = {
+  eventId?: string | number | null;
+  category?: 'event' | 'launch';
+  type?: string | null;
+  name?: string | null;
+  date?: string | null;
+  datePrecision?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  location?: string | null;
+  synthetic?: boolean;
+};
+
+function eventDetailRoute(input: EventDetailRouteParams) {
+  const params: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(input)) {
+    if (value === null || value === undefined || value === '') continue;
+    params[key] = String(value);
+  }
+
+  return { pathname: '/events', params } as const;
 }
 
 type DashboardScreenProps = {
@@ -470,6 +509,8 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
   const firstName = getFirstName(user);
   const displayName = getDisplayName(user);
   const profileMeta = getProfileMeta(user);
+  const levelProgressLabel = getUserLevelProgressLabel(user);
+  const levelProgressPercent = getUserLevelProgressPercent(user);
   const [browserCoords, setBrowserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const { events, isLoading: isCalendarLoading, error: calendarError } = useCalendarEvents({
     ...(browserCoords ?? {}),
@@ -587,18 +628,18 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
       }
     }
 
-    async function loadNasaImageNews() {
+    async function loadNasaNews() {
       try {
         setIsNewsLoading(true);
         setNewsError(null);
-        const news = await fetchNasaImageNews({ limit: 1, query: 'space station' });
+        const news = await fetchNasaNews({ limit: 1 });
         if (!isMounted) return;
         setNasaArticle(news.results?.[0] ?? null);
       } catch (error) {
-        console.log('NASA image news fetch error:', error);
+        console.log('NASA news fetch error:', error);
         if (isMounted) {
           setNasaArticle(null);
-          setNewsError('Could not load NASA image feed');
+          setNewsError('Could not load NASA news feed');
         }
       } finally {
         if (isMounted) setIsNewsLoading(false);
@@ -606,7 +647,7 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
     }
 
     void loadSpacewalk();
-    void loadNasaImageNews();
+    void loadNasaNews();
 
     return () => {
       isMounted = false;
@@ -860,9 +901,17 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
               <View style={styles.profileRing}>
                 <View style={styles.profileAvatar} />
               </View>
-              <View style={{ marginLeft: spacing.md }}>
+              <View style={styles.profileText}>
                 <Text style={styles.previewTitle}>{displayName}</Text>
                 <Text style={styles.previewMeta}>{profileMeta}</Text>
+                {levelProgressLabel ? (
+                  <View style={styles.profileLevelProgress}>
+                    <View style={styles.profileLevelTrack}>
+                      <View style={[styles.profileLevelFill, { width: `${levelProgressPercent}%` as any }]} />
+                    </View>
+                    <Text style={styles.profileLevelMeta}>{levelProgressLabel}</Text>
+                  </View>
+                ) : null}
               </View>
             </Pressable>
           ) : null}
@@ -920,7 +969,25 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
               title={calendarTitle}
               meta={calendarMeta}
               thumb={<CalendarThumb events={currentMonthEvents} />}
-              onPress={() => router.push('/calendar')}
+              onPress={() => router.push(eventDetailRoute(nextCalendarEvent
+                ? {
+                    eventId: nextCalendarEvent.id,
+                    category: nextCalendarEvent.type?.toLowerCase().includes('launch') ? 'launch' : 'event',
+                    type: nextCalendarEvent.type ?? 'Event',
+                    name: nextCalendarEvent.title,
+                    date: nextCalendarEvent.startDate,
+                    description: nextCalendarEvent.detail,
+                    imageUrl: nextCalendarEvent.imageUrl,
+                    location: nextCalendarEvent.location,
+                  }
+                : {
+                    category: 'event',
+                    type: 'Calendar',
+                    name: calendarTitle,
+                    date: today.toISOString(),
+                    description: calendarMeta,
+                    synthetic: true,
+                  }) as any)}
               locked={isLocked}
             />
 
@@ -931,7 +998,17 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
               title="Your Sky Tonight"
               meta={browserCoords ? locationLabel : 'Enable location for current sky map'}
               thumb={<MapThumb coords={browserCoords} locationLabel={locationLabel} />}
-              onPress={() => router.push('/map')}
+              onPress={() => router.push(eventDetailRoute({
+                category: 'event',
+                type: 'Sky Conditions',
+                name: 'Your Sky Tonight',
+                date: today.toISOString(),
+                description: [locationMessage, getSkyGreeting(viewingScore, viewingScoreStatus)]
+                  .filter(Boolean)
+                  .join(' | '),
+                location: browserCoords ? locationLabel : null,
+                synthetic: true,
+              }) as any)}
               locked={isLocked}
             />
 
@@ -954,7 +1031,17 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
                   : formatLaunchMeta(nextLaunch)
               }
               thumb={<LaunchThumb imageUrl={nextLaunch?.image ?? null} />}
-              onPress={() => router.push('/explore')}
+              onPress={() => router.push(eventDetailRoute({
+                category: 'launch',
+                type: 'Rocket Launch',
+                name: nextLaunch?.name ?? 'Upcoming Launches',
+                date: nextLaunch?.net ?? null,
+                datePrecision: nextLaunch?.net_precision ?? null,
+                description: nextLaunch?.mission?.description ?? formatLaunchMeta(nextLaunch),
+                imageUrl: nextLaunch?.image ?? null,
+                location: nextLaunch?.pad?.location ?? nextLaunch?.pad?.name ?? null,
+                synthetic: true,
+              }) as any)}
               locked={isLocked}
             />
 
@@ -1034,7 +1121,7 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
             />
 
             <PreviewCard
-              eyebrow="NASA IMAGE"
+              eyebrow="NASA NEWS"
               badge={formatNewsBadge({
                 isLoading: isNewsLoading,
                 error: newsError,
@@ -1043,19 +1130,19 @@ export default function DashboardScreen({ locked = false }: DashboardScreenProps
               badgeColor={Palette.accentMoon}
               title={
                 isNewsLoading
-                  ? 'Loading NASA image...'
+                  ? 'Loading NASA news...'
                   : newsError
-                  ? 'NASA image unavailable'
-                  : nasaArticle?.title ?? 'No NASA image found'
+                  ? 'NASA news unavailable'
+                  : nasaArticle?.title ?? 'No NASA news found'
               }
               meta={
                 isNewsLoading
-                  ? 'Fetching the latest NASA image library item.'
+                  ? 'Fetching the latest NASA news article.'
                   : newsError
                   ? newsError
                   : formatNewsMeta(nasaArticle)
               }
-              thumb={<NewsThumb article={nasaArticle} isLoading={isNewsLoading} />}
+              thumb={<NewsThumb article={nasaArticle} />}
               onPress={nasaArticle?.url ? () => openExternalUrl(nasaArticle.url) : undefined}
               locked={isLocked}
             />
@@ -1200,7 +1287,7 @@ function MoonThumb({
       <View style={styles.moonThumbRing} />
       <View style={styles.moonThumbDisc}>
         {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.moonImage} resizeMode="cover" />
+          <Image source={{ uri: imageUrl }} style={[styles.moonImage, styles.moonImageFromApi]} resizeMode="cover" />
         ) : (
           <GeneratedMoonPhase
             phaseName={phaseName}
@@ -1445,12 +1532,14 @@ function IssThumb({
 function BodiesThumb({ bodies, isLoading }: { bodies: VisibleBody[]; isLoading: boolean }) {
   const topBodies = getTopVisibleBodies(bodies);
   const primaryBody = topBodies[0] ?? null;
+  const imageUrl = primaryBody?.image_url ?? null;
+  const hasImage = Boolean(imageUrl);
 
   return (
-    <View style={styles.bodiesThumb}>
-      {primaryBody?.image_url ? (
+    <View style={[styles.bodiesThumb, hasImage && styles.bodiesThumbWithImage]}>
+      {hasImage ? (
         <>
-          <Image source={{ uri: primaryBody.image_url }} style={styles.bodiesImage} resizeMode="contain" />
+          <Image source={{ uri: imageUrl ?? '' }} style={styles.bodiesImage} resizeMode="contain" />
           <View style={styles.bodiesImageScrim} />
         </>
       ) : (
@@ -1520,7 +1609,7 @@ function SpacewalkThumb({
   );
 }
 
-function NewsThumb({ article, isLoading }: { article: NewsArticle | null; isLoading: boolean }) {
+function NewsThumb({ article }: { article: NewsArticle | null }) {
   return (
     <View style={styles.newsThumb}>
       {article?.image_url ? (
@@ -1533,12 +1622,6 @@ function NewsThumb({ article, isLoading }: { article: NewsArticle | null; isLoad
           <Text style={styles.newsFallbackText}>NASA</Text>
         </View>
       )}
-      <View style={styles.newsReadout}>
-        <Text style={styles.tileReadoutLabel}>NASA IMAGE</Text>
-        <Text style={styles.tileReadoutValue} numberOfLines={2}>
-          {isLoading ? 'Loading...' : article?.title ?? 'No image found'}
-        </Text>
-      </View>
     </View>
   );
 }
@@ -1612,7 +1695,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.md,
     width: '100%',
-    maxWidth: 1180,
+    maxWidth: dvw(1040),
     alignSelf: 'center',
   },
   topBar: {
@@ -1728,7 +1811,7 @@ const styles = StyleSheet.create({
   },
   moonStage: {
     width: '100%',
-    height: 160,
+    height: dvh(160),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1756,6 +1839,9 @@ const styles = StyleSheet.create({
   moonImage: {
     width: '100%',
     height: '100%',
+  },
+  moonImageFromApi: {
+    transform: [{ scale: 1.18 }],
   },
   moonLoading: {
     width: '100%',
@@ -1850,7 +1936,7 @@ const styles = StyleSheet.create({
   },
   issHeroStage: {
     width: '100%',
-    height: 220,
+    height: dvh(220),
     borderRadius: Radius.md,
     overflow: 'hidden',
     backgroundColor: Palette.bgDeep,
@@ -1882,7 +1968,7 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 48,
     overflow: 'hidden',
-    backgroundColor: Palette.bgDeep,
+    backgroundColor: 'transparent',
     shadowColor: Palette.accentMoon,
     shadowOpacity: 0.36,
     shadowRadius: 22,
@@ -1915,7 +2001,7 @@ const styles = StyleSheet.create({
   },
   sectionLabelLine: {
     flex: 1,
-    height: 1,
+    height: dvh(1),
     backgroundColor: Palette.borderSoft,
   },
 
@@ -1933,10 +2019,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     flexBasis: '31%',
     flexGrow: 1,
-    minWidth: 230,
+    minWidth: dvw(230),
   },
   previewThumb: {
-    height: 168,
+    height: dvh(168),
     backgroundColor: Palette.bgDeep,
     borderBottomWidth: 1,
     borderBottomColor: Palette.borderSoft,
@@ -2028,7 +2114,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: '50%',
     marginLeft: -1.5,
-    width: 3,
+    width: dvw(3),
     height: '60%',
     backgroundColor: Palette.accentMoon,
     opacity: 0.5,
@@ -2050,14 +2136,14 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   issHeroThumb: {
-    minHeight: 220,
+    minHeight: dvh(220),
   },
   issHorizon: {
     position: 'absolute',
     left: 14,
     right: 14,
     bottom: 42,
-    height: 1,
+    height: dvh(1),
     backgroundColor: Palette.border,
   },
   issOrbitArc: {
@@ -2065,7 +2151,7 @@ const styles = StyleSheet.create({
     left: '10%',
     right: '10%',
     bottom: 24,
-    height: 104,
+    height: dvh(104),
     borderTopWidth: 2,
     borderLeftWidth: 1,
     borderRightWidth: 1,
@@ -2078,7 +2164,7 @@ const styles = StyleSheet.create({
     left: '8%',
     right: '8%',
     bottom: 48,
-    height: 120,
+    height: dvh(120),
   },
   issNode: {
     position: 'absolute',
@@ -2102,8 +2188,8 @@ const styles = StyleSheet.create({
     top: 52,
     left: '50%',
     marginLeft: -44,
-    width: 88,
-    height: 46,
+    width: dvw(88),
+    height: dvh(46),
     borderRadius: Radius.sm,
     backgroundColor: 'rgba(0, 212, 255, 0.08)',
     alignItems: 'center',
@@ -2116,8 +2202,8 @@ const styles = StyleSheet.create({
   issHeroStation: {
     top: 86,
     marginLeft: -58,
-    width: 116,
-    height: 60,
+    width: dvw(116),
+    height: dvh(60),
   },
   issStationIcon: {
     width: '100%',
@@ -2153,7 +2239,7 @@ const styles = StyleSheet.create({
   },
   issStatPill: {
     flex: 1,
-    minWidth: 0,
+    minWidth: dvw(0),
     backgroundColor: Palette.surface + 'E6',
     borderWidth: 1,
     borderColor: Palette.borderSoft,
@@ -2193,6 +2279,9 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.bgDeep,
     overflow: 'hidden',
   },
+  bodiesThumbWithImage: {
+    backgroundColor: '#000000',
+  },
   bodiesImage: {
     width: '100%',
     height: '100%',
@@ -2206,7 +2295,7 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     bottom: 28,
-    height: 112,
+    height: dvh(112),
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
@@ -2220,7 +2309,7 @@ const styles = StyleSheet.create({
     left: 14,
     right: 14,
     bottom: 34,
-    height: 1,
+    height: dvh(1),
     backgroundColor: Palette.border,
   },
   bodyDot: {
@@ -2243,7 +2332,7 @@ const styles = StyleSheet.create({
   },
   bodiesReadout: {
     flex: 1,
-    minWidth: 0,
+    minWidth: dvw(0),
     alignItems: 'center',
     backgroundColor: Palette.surface + 'CC',
     borderWidth: 1,
@@ -2275,7 +2364,7 @@ const styles = StyleSheet.create({
   },
   bodyNamePill: {
     flexBasis: 96,
-    minWidth: 0,
+    minWidth: dvw(0),
     backgroundColor: Palette.surface + 'E6',
     borderWidth: 1,
     borderColor: Palette.borderSoft,
@@ -2317,7 +2406,7 @@ const styles = StyleSheet.create({
   },
   spacewalkReadout: {
     flex: 1,
-    minWidth: 0,
+    minWidth: dvw(0),
     alignItems: 'center',
     backgroundColor: Palette.surface + 'CC',
     borderWidth: 1,
@@ -2340,7 +2429,7 @@ const styles = StyleSheet.create({
   },
   spacewalkCrewPill: {
     flexBasis: 96,
-    minWidth: 0,
+    minWidth: dvw(0),
     backgroundColor: Palette.surface + 'E6',
     borderWidth: 1,
     borderColor: Palette.borderSoft,
@@ -2376,18 +2465,6 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     fontWeight: '800',
   },
-  newsReadout: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 10,
-    backgroundColor: Palette.surface + 'E6',
-    borderWidth: 1,
-    borderColor: Palette.borderSoft,
-    borderRadius: Radius.sm,
-    padding: 8,
-  },
-
   weatherThumb: {
     flex: 1,
     backgroundColor: Palette.bgDeep,
@@ -2427,7 +2504,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   weatherBarLabel: {
-    width: 50,
+    width: dvw(50),
     color: Palette.textSecondary,
     fontSize: 10,
     lineHeight: 12,
@@ -2435,7 +2512,7 @@ const styles = StyleSheet.create({
   },
   weatherBarTrack: {
     flex: 1,
-    height: 6,
+    height: dvh(6),
     borderRadius: 3,
     backgroundColor: Palette.surfaceRaised,
     overflow: 'hidden',
@@ -2446,7 +2523,7 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.accentMoon,
   },
   weatherBarValue: {
-    width: 34,
+    width: dvw(34),
     color: Palette.textPrimary,
     fontSize: 10,
     lineHeight: 12,
@@ -2462,6 +2539,34 @@ const styles = StyleSheet.create({
     borderColor: Palette.borderSoft,
     borderRadius: Radius.md,
     padding: spacing.md,
+  },
+  profileText: {
+    flex: 1,
+    minWidth: dvw(0),
+    marginLeft: spacing.md,
+  },
+  profileLevelProgress: {
+    marginTop: 8,
+    gap: 5,
+    width: '18dvw' as any,
+  },
+  profileLevelTrack: {
+    height: '0.7dvh' as any,
+    borderRadius: Radius.pill,
+    backgroundColor: Palette.surfaceRaised,
+    borderWidth: 1,
+    borderColor: Palette.borderSoft,
+    overflow: 'hidden',
+  },
+  profileLevelFill: {
+    height: '100%',
+    backgroundColor: Palette.accentMoon,
+  },
+  profileLevelMeta: {
+    color: Palette.textTertiary,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
   },
   profileRing: {
     width: 48,

@@ -21,8 +21,8 @@
  * The square is pure CSS so the marker is visible even before icon_rocket.png
  * exists; the <img> simply sits inside it. */
 .rocketMarker {
-  width: 26px;
-  height: 26px;
+  width: 1.806dvw;
+  height: 1.806dvw;
   border-radius: 5px;
   background: #ef233c;
   border: 1px solid #ff6b7d;
@@ -31,8 +31,8 @@
   justify-content: center;
 }
 .rocketMarker img {
-  width: 16px;
-  height: 16px;
+  width: 61.538%;
+  height: 61.538%;
   object-fit: contain;
 }
 

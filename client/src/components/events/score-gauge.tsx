@@ -7,6 +7,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { Palette } from '@/constants/tokens';
 import { gaugeSvgMarkup, scoreColor } from '@/components/star-map/gauge-svg';
+import { dvw, dvh } from '@/utilities/responsive-dimensions';
 
 /** Encode SVG as a data URI. Base64 is the most broadly-supported form (the
  *  `;utf8,` shorthand is rejected by several browsers and renders blank). */
@@ -43,16 +44,16 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   arcBox: {
-    width: 150,
-    height: 90,
+    width: dvw(150),
+    height: dvh(90),
     alignItems: 'center',
     justifyContent: 'flex-end',
   },
   gauge: {
     position: 'absolute',
     top: 0,
-    width: 150,
-    height: 90,
+    width: dvw(150),
+    height: dvh(90),
   },
   number: {
     fontSize: 30,
