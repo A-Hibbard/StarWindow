@@ -16,7 +16,7 @@ const DESCRIPTION_MAX = 140;
 /** Accent used for launch cards (matches the dashboard's "Launches" theming). */
 const LAUNCH_ACCENT = Palette.accentRed;
 /** Accent used for regular space events. */
-const EVENT_ACCENT = Palette.accentMoon;
+const EVENT_ACCENT = Palette.accent;
 
 /**
  * Format an event date honoring its precision, so approximate dates aren't shown
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   date: {
     fontSize: 12,
     fontWeight: '600',
-    color: Palette.accentMoon,
+    color: Palette.accent,
   },
   location: {
     fontSize: 12,
