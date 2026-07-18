@@ -1,5 +1,7 @@
 // Client for the unified events list endpoint (GET /api/events/list).
 
+import sendRequest from '@/utilities/send-request';
+
 const API_BASE = process.env.EXPO_PUBLIC_API_URL;
 
 /** Whether an item is a generic space event or a rocket launch. */
@@ -46,6 +48,12 @@ export interface EventListItem {
   webcast_live: boolean;
   video_url: string | null;
   launch_details: LaunchDetails | null;
+}
+
+export interface SavedUserEvent extends EventListItem {
+  user_event_id: string;
+  event_comment: string | null;
+  event_rating: number | null;
 }
 
 export interface ViewingScoreResponse {
@@ -106,4 +114,14 @@ export async function fetchEventsList(signal?: AbortSignal): Promise<EventListIt
   const res = await fetch(`${API_BASE}/api/events/list`, { signal });
   if (!res.ok) throw new Error(`events list request failed: ${res.status}`);
   return res.json();
+}
+
+/** Fetch every event saved by the currently logged-in user. */
+export function fetchSavedUserEvents(signal?: AbortSignal): Promise<SavedUserEvent[]> {
+  return sendRequest<null, SavedUserEvent[]>(
+    `${API_BASE}/api/user-events/saved`,
+    'GET',
+    null,
+    { signal }
+  );
 }

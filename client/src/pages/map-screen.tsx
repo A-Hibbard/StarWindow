@@ -1,4 +1,3 @@
-import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
@@ -10,6 +9,7 @@ import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { fetchLaunches } from '@/lib/astronomy';
 import { fetchBestSpot, type BestSpot } from '@/lib/map-api';
+import { getOrRequestUserLocation } from '@/utilities/user-location-service';
 import * as usersService from '@/utilities/users-service';
 
 // Zoom we drop to once we know the user's location - close enough to see their
@@ -69,15 +69,9 @@ export default function MapScreen() {
 
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (cancelled || status !== 'granted') return;
-
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        if (cancelled) return;
-
-        const { latitude, longitude } = pos.coords;
+        const location = await getOrRequestUserLocation();
+        if (cancelled || !location) return;
+        const { latitude, longitude } = location;
         setUserLocation({ lat: latitude, lng: longitude });
         setCenter([latitude, longitude]);
       } catch {

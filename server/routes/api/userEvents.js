@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const ensureLoggedIn = require("../../config/ensureLoggedIn");
 const userEventQueries = require("../../db/queries/userEvents");
 
 // NOTE: this trusts user_id from the request body per the phase-2 spec. The
@@ -16,6 +17,18 @@ router.get("/", async (req, res) => {
   try {
     const row = await userEventQueries.getUserEvent(Number(user_id), event_id);
     res.json({ saved: Boolean(row), user_event_id: row?.user_event_id ?? null });
+  } catch (error) {
+    const status = error.status || 500;
+    res.status(status).json({ error: error.message, status });
+  }
+});
+
+// GET /api/user-events/saved
+// Return all events saved by the current logged-in user.
+router.get("/saved", ensureLoggedIn, async (req, res) => {
+  try {
+    const events = await userEventQueries.getSavedEventsForUser(req.user.user_id);
+    res.json(events);
   } catch (error) {
     const status = error.status || 500;
     res.status(status).json({ error: error.message, status });
